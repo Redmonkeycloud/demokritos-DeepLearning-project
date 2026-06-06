@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Learning SER — Implementation Plan</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;800&display=swap');
+
+        :root {
+            --bg: #0a0e1a;
+            --surface: #111827;
+            --border: #1e2d45;
+            --data: #10b981;
+            --data-dim: #10b98122;
+            --mlp: #f59e0b;
+            --mlp-dim: #f59e0b22;
+            --cnn: #00d4ff;
+            --cnn-dim: #00d4ff22;
+            --cnnlstm: #ff6b35;
+            --cnnlstm-dim: #ff6b3522;
+            --w2v: #a855f7;
+            --w2v-dim: #a855f722;
+            --noise: #ef4444;
+            --noise-dim: #ef444422;
+            --eval: #38bdf8;
+            --eval-dim: #38bdf822;
+            --text: #e2e8f0;
+            --text-dim: #64748b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Syne', sans-serif;
+            min-height: 100vh;
+            padding: 32px 20px;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background:
+                radial-gradient(ellipse at 15% 20%, #10b9810a 0%, transparent 45%),
+                radial-gradient(ellipse at 85% 80%, #a855f70a 0%, transparent 45%),
+                radial-gradient(ellipse at 50% 50%, #00d4ff07 0%, transparent 60%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .wrapper {
+            position: relative;
+            z-index: 1;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: clamp(16px, 2.5vw, 26px);
+            font-weight: 800;
+            margin-bottom: 4px;
+            background: linear-gradient(90deg, var(--cnn), var(--w2v), var(--cnnlstm));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-bottom: 24px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        /* ── LEGEND ── */
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+
+        .leg {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-dim);
+        }
+
+        .leg-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+        }
+
+        /* ── INPUT BOX ── */
+        .input-box {
+            border: 1px solid var(--data);
+            background: var(--data-dim);
+            border-radius: 10px;
+            padding: 12px 16px;
+            text-align: center;
+        }
+
+        .input-box .icon { font-size: 20px; }
+
+        .input-box .label {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--data);
+            margin: 4px 0 4px;
+        }
+
+        .input-box .desc {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-dim);
+        }
+
+        /* ── STEP LABEL ── */
+        .step-label {
+            text-align: center;
+            font-size: 9px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin: 14px 0 10px;
+            position: relative;
+        }
+
+        .step-label::before, .step-label::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 28%;
+            height: 1px;
+            background: var(--border);
+        }
+
+        .step-label::before { left: 3%; }
+        .step-label::after { right: 3%; }
+
+        /* ── ARROW DOWN ── */
+        .arr-down {
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .arr-down::before {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0; left: 50%;
+            transform: translateX(-50%);
+            width: 2px;
+            background: #1e3a5a;
+        }
+
+        .arr-down::after {
+            content: '▼';
+            font-size: 9px;
+            color: var(--text-dim);
+            background: var(--bg);
+            padding: 0 3px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ── MERGE ARROW ── */
+        .merge-arr {
+            text-align: center;
+            font-size: 20px;
+            color: var(--eval);
+            margin: 8px 0;
+            animation: pulse 2.2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1 }
+            50% { opacity: .35 }
+        }
+
+        /* ── NODES ── */
+        .node {
+            border-radius: 9px;
+            padding: 11px 13px;
+            border: 1px solid;
+            transition: transform 0.18s;
+        }
+
+        .node:hover { transform: translateY(-2px); }
+        .node.data  { border-color: var(--data);    background: var(--data-dim); }
+        .node.noise { border-color: var(--noise);   background: var(--noise-dim); }
+        .node.eval  { border-color: var(--eval);    background: var(--eval-dim); }
+
+        .n-head {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 7px;
+        }
+
+        .n-head.data  { color: var(--data); }
+        .n-head.noise { color: var(--noise); }
+        .n-head.eval  { color: var(--eval); }
+
+        .n-body {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text);
+            line-height: 1.65;
+        }
+
+        /* ── TAGS ── */
+        .tag {
+            display: inline-block;
+            font-size: 9px;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin: 1px 2px 1px 0;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .tag.data    { background: #10b98122; color: var(--data);    border: 1px solid #10b98144; }
+        .tag.mlp     { background: #f59e0b22; color: var(--mlp);     border: 1px solid #f59e0b44; }
+        .tag.cnn     { background: #00d4ff22; color: var(--cnn);     border: 1px solid #00d4ff44; }
+        .tag.cnnlstm { background: #ff6b3522; color: var(--cnnlstm); border: 1px solid #ff6b3544; }
+        .tag.w2v     { background: #a855f722; color: var(--w2v);     border: 1px solid #a855f744; }
+        .tag.noise   { background: #ef444422; color: var(--noise);   border: 1px solid #ef444444; }
+        .tag.eval    { background: #38bdf822; color: var(--eval);    border: 1px solid #38bdf844; }
+        .tag.warn    { background: #ef444433; color: #fca5a5;        border: 1px solid #ef444466; }
+
+        /* ── BRANCHES ── */
+        .branches {
+            display: flex;
+            gap: 7px;
+            margin-top: 8px;
+        }
+
+        .br {
+            flex: 1;
+            background: #05091488;
+            border-radius: 6px;
+            padding: 7px;
+            border: 1px solid #1e2d45;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            color: var(--text);
+            line-height: 1.65;
+        }
+
+        .br-title {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 4px;
+        }
+
+        /* ── NOTE ── */
+        .note {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            color: var(--text-dim);
+            margin-top: 7px;
+            padding: 5px 9px;
+            border-left: 2px solid var(--border);
+            background: #ffffff04;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .note.warn {
+            border-left-color: var(--noise);
+            color: #fca5a5;
+            background: #ef444411;
+        }
+
+        /* ── THREE COLUMN ── */
+        .three-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 14px;
+        }
+
+        /* ── DATA PREP CARDS ── */
+        .dp-card {
+            border-radius: 9px;
+            padding: 11px 13px;
+            border: 1px solid;
+            transition: transform 0.18s;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            line-height: 1.65;
+        }
+
+        .dp-card:hover { transform: translateY(-2px); }
+        .dp-card.mlp     { border-color: var(--mlp);     background: var(--mlp-dim); }
+        .dp-card.cnn     { border-color: var(--cnn);     background: var(--cnn-dim); }
+        .dp-card.w2v     { border-color: var(--w2v);     background: var(--w2v-dim); }
+
+        .dp-head {
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .dp-head.mlp     { color: var(--mlp); }
+        .dp-head.cnn     { color: var(--cnn); }
+        .dp-head.w2v     { color: var(--w2v); }
+
+        /* ── SPLIT 3-WAY ── */
+        .split3 {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            height: 48px;
+            position: relative;
+            margin: 0 8%;
+        }
+
+        .split3::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 50%;
+            transform: translateX(-50%);
+            width: 2px;
+            height: 22px;
+            background: var(--data);
+        }
+
+        .split3::after {
+            content: '';
+            position: absolute;
+            top: 22px;
+            left: 5%; right: 5%;
+            height: 2px;
+            background: linear-gradient(to right, var(--mlp), var(--cnn), var(--w2v));
+        }
+
+        .split3 .arr-item {
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ── ARCH GRID (2×2) ── */
+        .arch-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .arch-card {
+            border-radius: 9px;
+            border: 1px solid;
+            padding: 13px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .arch-card.mlp     { border-color: var(--mlp);     background: var(--mlp-dim); }
+        .arch-card.cnn     { border-color: var(--cnn);     background: var(--cnn-dim); }
+        .arch-card.cnnlstm { border-color: var(--cnnlstm); background: var(--cnnlstm-dim); }
+        .arch-card.w2v     { border-color: var(--w2v);     background: var(--w2v-dim); }
+
+        .arch-head {
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .arch-head.mlp     { color: var(--mlp); }
+        .arch-head.cnn     { color: var(--cnn); }
+        .arch-head.cnnlstm { color: var(--cnnlstm); }
+        .arch-head.w2v     { color: var(--w2v); }
+
+        .arch-step {
+            background: #05091488;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 7px 9px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            color: var(--text);
+            line-height: 1.7;
+        }
+
+        .arch-label {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 4px;
+        }
+
+        .arch-arr {
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 11px;
+            padding: 3px 0;
+            position: relative;
+        }
+
+        .arch-arr::before {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0; left: 50%;
+            width: 2px;
+            background: var(--border);
+            transform: translateX(-50%);
+        }
+
+        .arch-arr span {
+            background: var(--bg);
+            padding: 0 4px;
+            position: relative;
+        }
+
+        /* ── CONFIGS TABLE ── */
+        .configs {
+            margin-top: 6px;
+            border-collapse: collapse;
+            width: 100%;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 8.5px;
+        }
+
+        .configs th {
+            color: var(--text-dim);
+            font-weight: 600;
+            text-align: left;
+            padding: 2px 5px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .configs td {
+            color: var(--text);
+            padding: 2px 5px;
+        }
+
+        .configs tr:hover td { background: #ffffff08; }
+
+        /* ── FOOTER ── */
+        .footer {
+            margin-top: 24px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-dim);
+            line-height: 1.9;
+            border-top: 1px solid var(--border);
+            padding-top: 14px;
+        }
+
+        /* ── EXEC ORDER ── */
+        .exec-order {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+
+        .exec-step {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid;
+            white-space: nowrap;
+        }
+
+        .exec-arr {
+            font-size: 10px;
+            color: var(--text-dim);
+            padding: 0 6px;
+        }
+
+        .exec-group {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            padding: 4px 8px;
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+<div class="wrapper">
+
+    <h1>Speech Emotion Recognition — Deep Learning Plan</h1>
+    <div class="subtitle">IEMOCAP → Preprocessing → 4 Αρχιτεκτονικές → Noise Robustness → Results</div>
+
+    <div class="legend">
+        <div class="leg"><div class="leg-dot" style="background:var(--data)"></div>Data &amp; Setup</div>
+        <div class="leg"><div class="leg-dot" style="background:var(--mlp)"></div>MLP (hand-crafted)</div>
+        <div class="leg"><div class="leg-dot" style="background:var(--cnn)"></div>CNN (spectrogram)</div>
+        <div class="leg"><div class="leg-dot" style="background:var(--cnnlstm)"></div>CNN-LSTM (spectrogram)</div>
+        <div class="leg"><div class="leg-dot" style="background:var(--w2v)"></div>wav2vec2 + attention</div>
+        <div class="leg"><div class="leg-dot" style="background:var(--noise)"></div>Noise Augmentation</div>
+        <div class="leg"><div class="leg-dot" style="background:var(--eval)"></div>Evaluation</div>
+        <div class="leg" style="margin-left:8px;">⚡ = παράλληλη εκτέλεση</div>
+    </div>
+
+    <!-- INPUT -->
+    <div class="input-box">
+        <div class="icon">🎙️</div>
+        <div class="label">INPUT — IEMOCAP Dataset</div>
+        <div class="desc">5.531 δείγματα · 4 κλάσεις (angry / happy / neutral / sad) · 80/20 split (υπάρχον) · CREMA-D για zero-shot eval</div>
+    </div>
+
+    <div class="arr-down"></div>
+
+    <!-- STEP 0 -->
+    <div class="step-label">── STEP 0 — SETUP &amp; DEPENDENCIES ──</div>
+
+    <div class="node data">
+        <div class="n-head data">⚙️ dl_00_setup_workflow.py</div>
+        <div class="n-body">
+            <div class="branches">
+                <div class="br">
+                    <div class="br-title" style="color:var(--data)">Νέα packages</div>
+                    <span class="tag data">torch</span> <span class="tag data">torchaudio</span> ✓<br>
+                    <span class="tag w2v">transformers</span> ← νέο<br>
+                    <span class="tag noise">audiomentations</span> ← νέο<br>
+                    → rebuild Docker container
+                </div>
+                <div class="br">
+                    <div class="br-title" style="color:var(--data)">Folder Structure</div>
+                    workflows/iemocap_dl/<br>
+                    &nbsp;├─ features/splits/80_20/<br>
+                    &nbsp;├─ spectrograms/train/ test/<br>
+                    &nbsp;├─ models/ mlp/ cnn/ cnn_lstm/ wav2vec2/<br>
+                    &nbsp;└─ results/ mlp/ cnn/ cnn_lstm/<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;wav2vec2/ noise_robustness/
+                </div>
+                <div class="br">
+                    <div class="br-title" style="color:var(--data)">Reuse από ML εξάμηνο</div>
+                    train.csv + test.csv ✓<br>
+                    iemocap_features.csv ✓<br>
+                    cremad_features.csv ✓<br>
+                    Docker + requirements.txt<br>
+                    (base για νέο container)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="arr-down"></div>
+
+    <!-- STEP 1 -->
+    <div class="step-label">── STEP 1 — DATA PREPARATION ⚡ Παράλληλα ──</div>
+
+    <div class="split3">
+        <span class="arr-item" style="color:var(--mlp)">▼ 272D features</span>
+        <span class="arr-item" style="color:var(--cnn)">▼ Mel-spectrograms</span>
+        <span class="arr-item" style="color:var(--w2v)">▼ Raw WAV</span>
+    </div>
+
+    <div class="three-col">
+
+        <div class="dp-card mlp">
+            <div class="dp-head mlp">📊 Features (υπάρχουν ήδη)</div>
+            Χρήση <span class="tag mlp">iemocap_features.csv</span><br>
+            → 272 διαστάσεις / δείγμα<br>
+            → pyAudioAnalysis:<br>
+            &nbsp;&nbsp;MFCC, ZCR, energy,<br>
+            &nbsp;&nbsp;spectral features<br>
+            → mean / min / max / std<br>
+            <br>
+            Δεν χρειάζεται νέο script ✓
+        </div>
+
+        <div class="dp-card cnn">
+            <div class="dp-head cnn">🎛️ dl_01_extract_spectrograms.py</div>
+            <span class="tag cnn">torchaudio.load()</span> → 16 kHz<br>
+            <span class="tag cnn">MelSpectrogram</span>:<br>
+            &nbsp;n_mels=128, hop=160 (10ms)<br>
+            &nbsp;win=400 (25ms), n_fft=1024<br>
+            → Log scale (amplitude_to_DB)<br>
+            → Pad/truncate: <span class="tag cnn">3s = 300 frames</span><br>
+            → Shape: <span class="tag cnn">(1, 128, 300)</span><br>
+            → Αποθήκευση ανά αρχείο: <span class="tag cnn">.npy</span><br>
+            → train_manifest.csv<br>
+            &nbsp;&nbsp;test_manifest.csv
+        </div>
+
+        <div class="dp-card w2v">
+            <div class="dp-head w2v">🔊 Raw Audio (wav2vec2)</div>
+            Δεν χρειάζεται pre-extraction<br>
+            → φορτώνει raw WAV on-the-fly<br>
+            → Resample <span class="tag w2v">16 kHz</span><br>
+            → <span class="tag w2v">AutoFeatureExtractor</span><br>
+            &nbsp;&nbsp;padding / truncation auto<br>
+            → Max length: <span class="tag w2v">10s</span><br>
+            <br>
+            Dataset class: file_path<br>
+            από train.csv
+        </div>
+
+    </div>
+
+    <div class="arr-down"></div>
+
+    <!-- STEP 2 -->
+    <div class="step-label">── STEP 2 — NOISE AUGMENTATION (TRAIN ONLY) ──</div>
+
+    <div class="node noise">
+        <div class="n-head noise">⚠️ dl_02_noise_augment.py</div>
+        <div class="n-body">
+            <div class="note warn">⛔ DATA LEAKAGE ΠΡΟΣΟΧΗ: Augmented δείγματα ΜΟΝΟ στο train set. Test set παραμένει clean και untouched σε όλα τα βήματα.</div>
+            <div class="branches" style="margin-top:10px;">
+                <div class="br">
+                    <div class="br-title" style="color:var(--noise)">Augmentation Types</div>
+                    <span class="tag noise">AddGaussianNoise</span><br>
+                    &nbsp;SNR: 5 dB / 10 dB / 20 dB<br>
+                    <span class="tag noise">AddBackgroundNoise</span><br>
+                    &nbsp;SNR: 10 dB (MUSAN)<br>
+                    <span class="tag noise">RoomSimulator</span><br>
+                    &nbsp;RT60: 0.3s / 0.6s<br>
+                    Library: <span class="tag noise">audiomentations</span>
+                </div>
+                <div class="br">
+                    <div class="br-title" style="color:var(--mlp)">Output για MLP</div>
+                    → Augmented WAVs<br>
+                    &nbsp;datasets/iemocap_augmented/<br>
+                    → Εξαγωγή 272D features<br>
+                    &nbsp;(pyAudioAnalysis, ίδιες παράμ.)<br>
+                    → <span class="tag mlp">train_augmented_features.csv</span><br>
+                    concat με train.csv για aug config
+                </div>
+                <div class="br">
+                    <div class="br-title" style="color:var(--cnn)">Output για CNN/CNN-LSTM</div>
+                    → Mel-spectrograms (.npy)<br>
+                    &nbsp;από augmented WAVs<br>
+                    → <span class="tag cnn">train_augmented_manifest.csv</span><br>
+                    concat manifest για aug config<br>
+                    <br>
+                    <span class="tag cnnlstm">wav2vec2:</span> on-the-fly aug<br>
+                    &nbsp;στο Dataset __getitem__
+                </div>
+                <div class="br">
+                    <div class="br-title" style="color:var(--eval)">Για Evaluation (Step 7)</div>
+                    Noisy test versions:<br>
+                    → δημιουργούνται ON-THE-FLY<br>
+                    &nbsp;&nbsp;στο dl_07_noise_robustness.py<br>
+                    → ΔΕΝ αποθηκεύονται<br>
+                    <br>
+                    Conditions: clean,<br>
+                    &nbsp;SNR=20/10/5/0 dB,<br>
+                    &nbsp;reverb 0.3s / 0.6s
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="merge-arr">↘ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ↙</div>
+
+    <!-- STEP 3-6 ARCH GRID -->
+    <div class="step-label">── STEPS 3–6 — ΑΡΧΙΤΕΚΤΟΝΙΚΕΣ ⚡ Παράλληλα ──</div>
+
+    <div class="arch-grid">
+
+        <!-- MLP -->
+        <div class="arch-card mlp">
+            <div class="arch-head mlp">① dl_03_train_mlp.py — Hand-crafted + MLP</div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--mlp)">Architecture</div>
+                Input(272) → [Linear → BN → ReLU → Dropout] × N → Linear(4)<br>
+                Loss: CrossEntropy · Optimizer: Adam · Scheduler: Cosine
+            </div>
+            <div class="arch-arr"><span>▼</span></div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--mlp)">Hyperparameter Grid — 6 configs</div>
+                <table class="configs">
+                    <tr><th>Config</th><th>Layers</th><th>Hidden</th><th>Dropout</th><th>LR</th></tr>
+                    <tr><td>MLP-1</td><td>2</td><td>256</td><td>0.3</td><td>1e-3</td></tr>
+                    <tr><td>MLP-2</td><td>3</td><td>256</td><td>0.3</td><td>1e-3</td></tr>
+                    <tr><td>MLP-3</td><td>3</td><td>512</td><td>0.3</td><td>1e-3</td></tr>
+                    <tr><td>MLP-4</td><td>3</td><td>512</td><td>0.5</td><td>1e-3</td></tr>
+                    <tr><td>MLP-5</td><td>4</td><td>512</td><td>0.3</td><td>5e-4</td></tr>
+                    <tr><td style="color:var(--noise)">MLP-6★</td><td>3</td><td>256</td><td>0.3</td><td>1e-3</td></tr>
+                </table>
+                <div style="font-size:8px; color:var(--noise); margin-top:3px;">★ MLP-6 = MLP-2 αρχιτεκτονική + augmented train set</div>
+            </div>
+            <div class="arch-arr"><span>▼</span></div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--mlp)">Training Details</div>
+                Early stopping: patience=10 (val F1)<br>
+                Val: 10% train (stratified)<br>
+                Metrics: Acc · W-F1 · Macro-F1 · UAR<br>
+                Output: checkpoint + training curves
+            </div>
+        </div>
+
+        <!-- CNN -->
+        <div class="arch-card cnn">
+            <div class="arch-head cnn">② dl_04_train_cnn.py — Mel-spectrogram + CNN</div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--cnn)">Architecture</div>
+                Input(1,128,300) → [Conv2d→BN→ReLU→MaxPool] × N<br>
+                → AdaptiveAvgPool → Flatten → Linear → Dropout → Linear(4)
+            </div>
+            <div class="arch-arr"><span>▼</span></div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--cnn)">Hyperparameter Grid — 6 configs</div>
+                <table class="configs">
+                    <tr><th>Config</th><th>Blocks</th><th>Filters</th><th>Drop</th><th>LR</th></tr>
+                    <tr><td>CNN-1</td><td>2</td><td>[32, 64]</td><td>0.3</td><td>1e-3</td></tr>
+                    <tr><td>CNN-2</td><td>3</td><td>[32, 64, 128]</td><td>0.3</td><td>1e-3</td></tr>
+                    <tr><td>CNN-3</td><td>3</td><td>[64, 128, 256]</td><td>0.3</td><td>1e-3</td></tr>
+                    <tr><td>CNN-4</td><td>3</td><td>[32, 64, 128]</td><td>0.5</td><td>1e-3</td></tr>
+                    <tr><td>CNN-5</td><td>4</td><td>[32,64,128,256]</td><td>0.3</td><td>5e-4</td></tr>
+                    <tr><td style="color:var(--noise)">CNN-6★</td><td>3</td><td>[32, 64, 128]</td><td>0.3</td><td>1e-3</td></tr>
+                </table>
+                <div style="font-size:8px; color:var(--noise); margin-top:3px;">★ CNN-6 = CNN-2 αρχιτεκτονική + augmented spectrograms</div>
+            </div>
+            <div class="arch-arr"><span>▼</span></div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--cnn)">Training Details</div>
+                Dataset class: φορτώνει .npy on-the-fly<br>
+                Same scheduler / early stopping ως MLP<br>
+                Output: checkpoint + training curves
+            </div>
+        </div>
+
+        <!-- CNN-LSTM -->
+        <div class="arch-card cnnlstm">
+            <div class="arch-head cnnlstm">③ dl_05_train_cnn_lstm.py — Mel-spectrogram + CNN-LSTM</div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--cnnlstm)">Architecture</div>
+                Input(1,128,T) → CNN blocks → squeeze + permute<br>
+                → shape(batch, T', C) → BiLSTM(C → H)<br>
+                → Attention pooling → Linear(2H) → Dropout → Linear(4)
+            </div>
+            <div class="arch-arr"><span>▼</span></div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--cnnlstm)">Hyperparameter Grid — 6 configs</div>
+                <table class="configs">
+                    <tr><th>Config</th><th>CNN</th><th>H</th><th>L</th><th>BiLSTM</th></tr>
+                    <tr><td>CL-1</td><td>2</td><td>128</td><td>1</td><td>True</td></tr>
+                    <tr><td>CL-2</td><td>2</td><td>256</td><td>1</td><td>True</td></tr>
+                    <tr><td>CL-3</td><td>2</td><td>128</td><td>2</td><td>True</td></tr>
+                    <tr><td>CL-4</td><td>3</td><td>128</td><td>1</td><td>True</td></tr>
+                    <tr><td>CL-5</td><td>2</td><td>128</td><td>1</td><td>False</td></tr>
+                    <tr><td style="color:var(--noise)">CL-6★</td><td>2</td><td>128</td><td>1</td><td>True</td></tr>
+                </table>
+                <div style="font-size:8px; color:var(--noise); margin-top:3px;">★ CL-6 = CL-1 αρχιτεκτονική + augmented spectrograms</div>
+            </div>
+            <div class="arch-arr"><span>▼</span></div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--cnnlstm)">Report Analysis</div>
+                CNN vs CNN-LSTM: αναδεικνύει<br>
+                αν η χρονική μοντελοποίηση βοηθά<br>
+                Bi-directional vs Uni-directional
+            </div>
+        </div>
+
+        <!-- wav2vec2 -->
+        <div class="arch-card w2v">
+            <div class="arch-head w2v">④ dl_06_train_wav2vec2.py — wav2vec2 + Attention Head</div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--w2v)">Architecture</div>
+                <span class="tag w2v">facebook/wav2vec2-base</span> pretrained<br>
+                hidden states (batch, T, 768)<br>
+                → Multi-head Self-Attention pooling → (batch, 768)<br>
+                → Linear(768→256) → ReLU → Dropout → Linear(256→4)
+            </div>
+            <div class="arch-arr"><span>▼</span></div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--w2v)">Training Strategy</div>
+                Epochs 1-5: feature extractor <strong>frozen</strong><br>
+                Epoch 6+: unfreeze, layerwise LR decay<br>
+                Optimizer: <span class="tag w2v">AdamW</span> + weight decay<br>
+                <span class="tag warn">⚠️ Απαιτεί GPU</span>
+            </div>
+            <div class="arch-arr"><span>▼</span></div>
+            <div class="arch-step">
+                <div class="arch-label" style="color:var(--w2v)">Απαιτούμενη Ανάλυση (report)</div>
+                Attention weight visualization:<br>
+                &nbsp;ποια frames "κοιτάει" ανά emotion<br>
+                Layer probing (layers 1–12):<br>
+                &nbsp;linear probe ανά layer<br>
+                Frozen vs fine-tuned comparison<br>
+                <span class="tag w2v">⬆ Upper bound</span>
+            </div>
+        </div>
+
+    </div><!-- end arch-grid -->
+
+    <div class="merge-arr">↘ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ↙</div>
+
+    <!-- STEP 7 -->
+    <div class="step-label">── STEP 7 — NOISE ROBUSTNESS EVALUATION ──</div>
+
+    <div class="node eval">
+        <div class="n-head eval">📉 dl_07_noise_robustness_eval.py</div>
+        <div class="n-body">
+            <div class="branches">
+                <div class="br">
+                    <div class="br-title" style="color:var(--eval)">Input</div>
+                    Best checkpoints:<br>
+                    <span class="tag mlp">MLP-best</span><br>
+                    <span class="tag cnn">CNN-best</span><br>
+                    <span class="tag cnnlstm">CNN-LSTM-best</span><br>
+                    <span class="tag w2v">wav2vec2</span><br>
+                    <br>
+                    + Test WAV files (clean)<br>
+                    (δεν έχουν δει τα μοντέλα)
+                </div>
+                <div class="br">
+                    <div class="br-title" style="color:var(--noise)">Noise Conditions (on-the-fly)</div>
+                    Clean — baseline<br>
+                    Gaussian SNR = 20 dB<br>
+                    Gaussian SNR = 10 dB<br>
+                    Gaussian SNR = 5 dB<br>
+                    Gaussian SNR = 0 dB<br>
+                    Background noise SNR = 10 dB<br>
+                    Reverb RT60 = 0.3s<br>
+                    Reverb RT60 = 0.6s<br>
+                    <br>
+                    ΔΕΝ αποθηκεύονται
+                </div>
+                <div class="br">
+                    <div class="br-title" style="color:var(--eval)">Metrics ανά condition</div>
+                    <span class="tag eval">UAR</span> Unweighted Accuracy<br>
+                    <span class="tag eval">W-F1</span> Weighted F1<br>
+                    <br>
+                    Κάθε μοντέλο × condition<br>
+                    % drop from clean baseline
+                </div>
+                <div class="br">
+                    <div class="br-title" style="color:var(--eval)">Output Plots</div>
+                    Robustness curve:<br>
+                    &nbsp;x=SNR, y=UAR<br>
+                    &nbsp;1 γραμμή / αρχιτεκτονική<br>
+                    <br>
+                    Heatmap: μοντέλο × condition<br>
+                    <br>
+                    Augmentation impact:<br>
+                    &nbsp;clean-train vs aug-train
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="arr-down"></div>
+
+    <!-- STEP 8 -->
+    <div class="step-label">── STEP 8 — AGGREGATE RESULTS &amp; COMPARISON ──</div>
+
+    <div class="node eval">
+        <div class="n-head eval">📊 dl_08_aggregate_results.py — Τελική Σύγκριση</div>
+        <div class="n-body">
+            <div class="branches">
+                <div class="br">
+                    <div class="br-title" style="color:var(--eval)">Master Comparison Table</div>
+                    Rows: MLP-best, CNN-best,<br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;CNN-LSTM-best, wav2vec2<br>
+                    Cols:<br>
+                    &nbsp;Accuracy · W-F1 · Macro-F1<br>
+                    &nbsp;UAR(clean) · UAR(10dB) · UAR(5dB)<br>
+                    &nbsp;#Params · Train time
+                </div>
+                <div class="br">
+                    <div class="br-title" style="color:var(--eval)">Per-architecture Analysis</div>
+                    Hyperparameter sensitivity:<br>
+                    &nbsp;val F1 vs depth / size / LR<br>
+                    <br>
+                    Confusion matrices<br>
+                    (best model ανά arch)<br>
+                    <br>
+                    Augmentation impact:<br>
+                    &nbsp;clean vs aug train
+                </div>
+                <div class="br">
+                    <div class="br-title" style="color:var(--eval)">Report — Sections</div>
+                    1. Εισαγωγή + στόχοι<br>
+                    2. Datasets (σύντομο)<br>
+                    3. Αρχιτεκτονικές + αιτιολόγηση<br>
+                    4. Noise Augmentation strategy<br>
+                    5. Αποτελέσματα ανά arch<br>
+                    6. Noise Robustness analysis<br>
+                    7. wav2vec2 deep analysis<br>
+                    8. Συμπεράσματα
+                </div>
+                <div class="br">
+                    <div class="br-title" style="color:var(--eval)">Slides (~20)</div>
+                    Αντίστοιχη δομή με report<br>
+                    + visualizations:<br>
+                    &nbsp;robustness curves<br>
+                    &nbsp;confusion matrices<br>
+                    &nbsp;attention heatmaps<br>
+                    &nbsp;layer probing plots<br>
+                    &nbsp;architecture diagrams
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+        <div style="margin-bottom:8px; color:var(--text); font-weight:700;">Σειρά εκτέλεσης:</div>
+        <div class="exec-order">
+            <span class="exec-step" style="border-color:var(--data); color:var(--data); background:var(--data-dim)">Step 0 — Setup</span>
+            <span class="exec-arr">→</span>
+            <span class="exec-step" style="border-color:var(--cnn); color:var(--cnn); background:var(--cnn-dim)">Step 1 — dl_01</span>
+            <span class="exec-arr">→</span>
+            <span class="exec-step" style="border-color:var(--noise); color:var(--noise); background:var(--noise-dim)">Step 2 — dl_02</span>
+            <span class="exec-arr">→</span>
+            <div class="exec-group">
+                <span class="exec-step" style="border-color:var(--mlp); color:var(--mlp); background:var(--mlp-dim)">dl_03</span>
+                <span class="exec-step" style="border-color:var(--cnn); color:var(--cnn); background:var(--cnn-dim)">dl_04</span>
+                <span class="exec-step" style="border-color:var(--cnnlstm); color:var(--cnnlstm); background:var(--cnnlstm-dim)">dl_05</span>
+                <span class="exec-step" style="border-color:var(--w2v); color:var(--w2v); background:var(--w2v-dim)">dl_06</span>
+                <span style="font-size:8px; color:var(--text-dim); font-family:'JetBrains Mono',monospace;">⚡ παράλληλα</span>
+            </div>
+            <span class="exec-arr">→</span>
+            <span class="exec-step" style="border-color:var(--eval); color:var(--eval); background:var(--eval-dim)">Step 7 — dl_07</span>
+            <span class="exec-arr">→</span>
+            <span class="exec-step" style="border-color:var(--eval); color:var(--eval); background:var(--eval-dim)">Step 8 — dl_08</span>
+        </div>
+        <br>
+        <span style="color:var(--mlp)">★ MLP:</span> 272D hand-crafted · 6 configs (layers 2–4, hidden 256/512, dropout 0.3/0.5) · early stopping on val F1<br>
+        <span style="color:var(--cnn)">★ CNN:</span> Mel-spectrogram (1,128,300) · 6 configs (2–4 conv blocks, filters 32→256) · AdaptiveAvgPool head<br>
+        <span style="color:var(--cnnlstm)">★ CNN-LSTM:</span> CNN → BiLSTM → Attention pooling · 6 configs · Bi vs Uni-directional comparison<br>
+        <span style="color:var(--w2v)">★ wav2vec2:</span> facebook/wav2vec2-base · custom attention pooling head · layer probing (1–12) + attention vis · upper bound<br>
+        <span style="color:var(--noise)">★ Augmentation:</span> Gaussian (5/10/20 dB) + Background (10 dB) + Reverb (0.3/0.6s) · ΜΟΝΟ train set · audiomentations<br>
+        <span style="color:var(--eval)">★ Evaluation:</span> Clean + 7 noise conditions · UAR + W-F1 · robustness curves · augmentation impact analysis
+    </div>
+
+</div>
+</body>
+</html>
