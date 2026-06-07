@@ -840,31 +840,35 @@
 
         <!-- wav2vec2 -->
         <div class="arch-card w2v">
-            <div class="arch-head w2v">④ dl_06_train_wav2vec2.py — wav2vec2 + Attention Head</div>
+            <div class="arch-head w2v">④ dl_06_train_wav2vec2.py — wav2vec2 + Attention Head <span class="badge done">✅ DONE</span></div>
             <div class="arch-step">
                 <div class="arch-label" style="color:var(--w2v)">Architecture</div>
-                <span class="tag w2v">facebook/wav2vec2-base</span> pretrained<br>
+                <span class="tag w2v">facebook/wav2vec2-base</span> pretrained (LibriSpeech 960h)<br>
                 hidden states (batch, T, 768)<br>
-                → Multi-head Self-Attention pooling → (batch, 768)<br>
-                → Linear(768→256) → ReLU → Dropout → Linear(256→4)
+                -> Attention pooling (learnable) -> (batch, 768)<br>
+                -> Linear(768->256) -> ReLU -> Dropout -> Linear(256->4)<br>
+                batch=16 · GPU RTX 3060 · max_length=8s · 33 epochs
             </div>
             <div class="arch-arr"><span>▼</span></div>
             <div class="arch-step">
-                <div class="arch-label" style="color:var(--w2v)">Training Strategy</div>
-                Epochs 1-5: feature extractor <strong>frozen</strong><br>
-                Epoch 6+: unfreeze, layerwise LR decay<br>
-                Optimizer: <span class="tag w2v">AdamW</span> + weight decay<br>
-                <span class="tag warn">⚠️ Απαιτεί GPU</span>
+                <div class="arch-label" style="color:var(--w2v)">Αποτελέσματα</div>
+                <table class="res-table">
+                    <tr><th>Phase</th><th>Acc</th><th>W-F1</th><th>UAR</th></tr>
+                    <tr><td>Frozen baseline (ep 1-5)</td><td>56.0%</td><td>-</td><td>0.570</td></tr>
+                    <tr class="best"><td>Fine-tuned (ep 6-33)</td><td>72.0%</td><td>0.720</td><td>0.727</td></tr>
+                </table>
+                <div style="font-size:8px; color:var(--w2v); margin-top:3px;">Fine-tune gain: +15.7% UAR | Frozen &lt; MLP (0.633) &lt; Fine-tuned</div>
             </div>
             <div class="arch-arr"><span>▼</span></div>
             <div class="arch-step">
-                <div class="arch-label" style="color:var(--w2v)">Απαιτούμενη Ανάλυση (report)</div>
-                Attention weight visualization:<br>
-                &nbsp;ποια frames "κοιτάει" ανά emotion<br>
-                Layer probing (layers 1–12):<br>
-                &nbsp;linear probe ανά layer<br>
-                Frozen vs fine-tuned comparison<br>
-                <span class="tag w2v">⬆ Upper bound</span>
+                <div class="arch-label" style="color:var(--w2v)">Layer Probing (UAR per layer)</div>
+                L0: 0.630 | L1-8: 0.665-0.684 (plateau)<br>
+                L9: 0.703 | <strong style="color:var(--w2v)">L10: 0.741 (peak!)</strong><br>
+                L11: 0.740 | L12: 0.735<br>
+                <div style="font-size:8px; color:var(--text-dim); margin-top:3px;">Emotion info peaks at layer 10, not the final layer</div>
+                <br>
+                Attention viz: saved attention_visualization.png<br>
+                <span class="tag w2v">Upper bound confirmed</span>
             </div>
         </div>
 
@@ -1006,7 +1010,7 @@
         <span style="color:var(--mlp)">★ MLP:</span> 272D hand-crafted · Best: MLP-5 UAR=0.633 (4 layers, hidden=512, lr=5e-4) · v2 experiment (AdamW+class weights) απορρίφθηκε<br>
         <span style="color:var(--cnn)">★ CNN:</span> Best: CNN-6 UAR=0.617 (3 blocks + augmented) · augmentation +5.9% UAR · MLP νικάει CNN στο μέγεθος του IEMOCAP<br>
         <span style="color:var(--cnnlstm)">★ CNN-LSTM:</span> Best: CL-1 UAR=0.579 (baseline!) · aug overfit (val=0.93, test=0.544) · χρονική μοντελοποίηση δεν βοηθάει με μικρό dataset<br>
-        <span style="color:var(--w2v)">★ wav2vec2:</span> facebook/wav2vec2-base · custom attention pooling head · layer probing (1–12) + attention vis · upper bound<br>
+        <span style="color:var(--w2v)">★ wav2vec2:</span> UAR=0.727 (fine-tuned) vs 0.570 (frozen) · +15.7% gain · emotion peaks at layer 10 · frozen &lt; MLP · upper bound confirmed<br>
         <span style="color:var(--noise)">★ Augmentation:</span> 5 conditions: Gaussian (5/10/20 dB) + Reverb (0.3/0.6s) · in-memory (no WAVs) · synthetic RIR · ΜΟΝΟ train set · 22.120 δείγματα<br>
         <span style="color:var(--eval)">★ Evaluation:</span> Clean + 7 noise conditions · UAR + W-F1 · robustness curves · augmentation impact analysis
     </div>

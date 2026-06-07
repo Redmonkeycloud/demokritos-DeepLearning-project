@@ -222,31 +222,47 @@ Input(1, 128, T)
 
 ---
 
-## Βήμα 6 — Architecture 4: wav2vec2 + Attention Head (Upper Bound)
+## Βήμα 6 — Architecture 4: wav2vec2 + Attention Head (Upper Bound) ✅ DONE
 
 **Script:** `dl_06_train_wav2vec2.py`
 
 **Architecture:**
 ```
-facebook/wav2vec2-base (pretrained, HuggingFace)
+facebook/wav2vec2-base (pretrained, LibriSpeech 960h)
   → feature extractor (CNN layers)
   → transformer (12 layers, hidden=768)
   → hidden states: (batch, T, 768)
-  → Multi-head Self-Attention pooling → (batch, 768)
-  → Linear(768 → 256) → ReLU → Dropout
-  → Linear(256 → 4)
+  → Attention pooling (learnable weights) → (batch, 768)
+  → Linear(768→256) → ReLU → Dropout(0.3) → Linear(256→4)
 ```
 
-**Training Strategy:**
-- Epochs 1-5: feature extractor frozen
-- Epoch 6+: unfreeze, layerwise LR decay
-- Optimizer: AdamW + weight decay
-- ⚠️ Απαιτεί GPU — πριν την εκτέλεση: `pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cu126`
+**Training:** batch_size=16, GPU RTX 3060, max_length=8s, AdamW + layerwise LR decay
 
-**Απαιτούμενη Ανάλυση (για report):**
-1. Attention weight visualization
-2. Layer probing (layers 1-12)
-3. Frozen vs fine-tuned comparison
+### Αποτελέσματα
+
+| Phase | Accuracy | W-F1 | UAR | Epochs |
+|-------|----------|------|-----|--------|
+| Frozen baseline (ep 1-5) | 56.0% | - | 0.570 | 5 |
+| **Fine-tuned** ★ | **72.0%** | **0.720** | **0.727** | **33** |
+
+**Fine-tune gain: +15.7% UAR** (frozen → fine-tuned)
+
+### Layer Probing (UAR per layer, linear probe on test set)
+
+| Layer | UAR | Σημείωση |
+|-------|-----|---------|
+| 0 | 0.630 | feature projection output |
+| 1-8 | 0.665-0.684 | plateau, βασικά acoustic features |
+| 9 | 0.703 | άλμα |
+| **10** | **0.741** | **peak — emotion info εδώ** |
+| 11 | 0.740 | |
+| 12 | 0.735 | τελικό layer ελαφρά χειρότερο |
+
+### Βασικά Συμπεράσματα wav2vec2
+- **Frozen (0.570) < MLP (0.633)**: Τα pretrained features χωρίς fine-tuning είναι χειρότερα από hand-crafted! Χρειάζεται task-specific adaptation.
+- **Fine-tuning κρίσιμο**: +15.7% UAR — τα τελευταία 4 transformer layers προσαρμόζονται στο emotion task
+- **Emotion info peaks στο layer 10** (όχι 12): Το πρόβλημα "λύνεται" στο προτελευταίο layer
+- **Upper bound επαληθεύεται**: wav2vec2 ξεπερνάει όλα τα υπόλοιπα κατά μεγάλο περιθώριο
 
 ---
 
@@ -282,7 +298,7 @@ facebook/wav2vec2-base (pretrained, HuggingFace)
 | MLP-5 | 61.9% | 0.616 | 0.633 | - | - | - | - |
 | CNN-6 | 60.5% | 0.602 | 0.617 | - | - | - | - |
 | CNN-LSTM CL-1 | 55.9% | 0.546 | 0.579 | - | - | - | - |
-| wav2vec2 | - | - | - | - | - | - | - |
+| wav2vec2 | 72.0% | 0.720 | 0.727 | - | - | - | - |
 
 ---
 
@@ -317,7 +333,7 @@ Step 4 (dl_04_train_cnn.py) ✅  →  Best: CNN-6, UAR=0.617
     ↓
 Step 5 (dl_05_train_cnn_lstm.py) ✅  →  Best: CL-1, UAR=0.579
     ↓
-Step 6 (dl_06_train_wav2vec2.py) ← GPU needed
+Step 6 (dl_06_train_wav2vec2.py) ✅  →  UAR=0.727 (fine-tuned)
     ↓
 Step 7 (dl_07_noise_robustness_eval.py)
     ↓
