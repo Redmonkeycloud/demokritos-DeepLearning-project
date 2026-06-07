@@ -17,4 +17,5 @@ scipy
 imbalanced-learn
 xgboost
 optuna
-torchaudio
+transformers
+audiomentations
