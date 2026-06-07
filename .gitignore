@@ -4,6 +4,8 @@ datasets/*
 # Data
 data/*
 __pycache__/
+# Generated spectrograms (810MB - share via Google Drive)
+workflows/iemocap_dl/spectrograms/
 # Workflow outputs (per-workflow processed/models/results)
 workflows/iemocap_80_20/results/create_metrics_graphs.py
 workflows/iemocap_loso/results/create_metrics_graphs.py
