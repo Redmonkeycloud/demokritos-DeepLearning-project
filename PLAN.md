@@ -139,7 +139,7 @@ Input(272) → [Linear → BatchNorm → ReLU → Dropout] × N → Linear(4)
 
 ---
 
-## Βήμα 4 — Architecture 2: Mel-spectrogram + CNN 🔄 IN PROGRESS
+## Βήμα 4 — Architecture 2: Mel-spectrogram + CNN ✅ DONE
 
 **Script:** `dl_04_train_cnn.py`
 
@@ -151,20 +151,26 @@ Input(1, 128, 300)
 → Linear(C→256) → ReLU → Dropout → Linear(256→4)
 ```
 
-**Hyperparameter Grid (6 configs):**
+**Training:** batch_size=32, GPU (RTX 3060). Dataset class φορτώνει `.npy` on-the-fly.
 
-| Config | Blocks | Filters | Dropout | LR | Notes |
-|--------|--------|---------|---------|-----|-------|
-| CNN-1 | 2 | [32, 64] | 0.3 | 1e-3 | baseline |
-| CNN-2 | 3 | [32, 64, 128] | 0.3 | 1e-3 | +depth |
-| CNN-3 | 3 | [64, 128, 256] | 0.3 | 1e-3 | +width |
-| CNN-4 | 3 | [32, 64, 128] | 0.5 | 1e-3 | +dropout |
-| CNN-5 | 4 | [32, 64, 128, 256] | 0.3 | 5e-4 | deeper+slowLR |
-| CNN-6★ | 3 | [32, 64, 128] | 0.3 | 1e-3 | + augmented data |
+### Αποτελέσματα
 
-★ CNN-6 = CNN-2 αρχιτεκτονική + augmented spectrograms
+| Config | Blocks | Filters | Dropout | LR | Aug | Accuracy | W-F1 | UAR | Epochs |
+|--------|--------|---------|---------|-----|-----|----------|------|-----|--------|
+| CNN-1 | 2 | [32, 64] | 0.3 | 1e-3 | ✗ | 49.7% | 0.481 | 0.523 | 21 |
+| CNN-2 | 3 | [32, 64, 128] | 0.3 | 1e-3 | ✗ | 55.6% | 0.554 | 0.558 | 31 |
+| CNN-3 | 3 | [64, 128, 256] | 0.3 | 1e-3 | ✗ | 55.2% | 0.548 | 0.532 | 39 |
+| CNN-4 | 3 | [32, 64, 128] | 0.5 | 1e-3 | ✗ | 54.7% | 0.535 | 0.560 | 25 |
+| CNN-5 | 4 | [32,64,128,256] | 0.3 | 5e-4 | ✗ | 57.6% | 0.572 | 0.567 | 26 |
+| **CNN-6** ★ | **3** | **[32, 64, 128]** | **0.3** | **1e-3** | **✓** | **60.5%** | **0.602** | **0.617** | **80** |
 
-**Training:** batch_size=32, ίδιο setup με MLP. Dataset class φορτώνει `.npy` on-the-fly.
+**★ Best: CNN-6** (UAR=0.617) — CNN-2 αρχιτεκτονική + augmented spectrograms
+
+### Βασικά Συμπεράσματα CNN
+- **Augmentation = το μεγαλύτερο κέρδος**: CNN-6 vs CNN-2 (ίδια arch): UAR 0.617 vs 0.558 (+5.9%)
+- **Βάθος βοηθάει**: CNN-1→2→5: UAR 0.523→0.558→0.567
+- **Πλάτος (CNN-3) δεν βοηθάει** χωρίς αρκετά δεδομένα (0.532 < 0.558)
+- **MLP > CNN**: MLP-5 UAR=0.633 vs CNN-6 UAR=0.617 — τα hand-crafted features νικούν τα mel-spectrograms στο μέγεθος του IEMOCAP
 
 ---
 
@@ -252,14 +258,14 @@ facebook/wav2vec2-base (pretrained, HuggingFace)
 
 **Script:** `dl_08_aggregate_results.py`
 
-**Master Comparison Table:**
+**Master Comparison Table (partial):**
 
-| Μοντέλο | Accuracy | W-F1 | Macro-F1 | UAR(clean) | UAR(10dB) | UAR(5dB) | #Params | Time |
-|---------|----------|------|----------|------------|-----------|----------|---------|------|
-| MLP-5 | 61.9% | 0.616 | 0.624 | 0.633 | - | - | - | - |
-| CNN-best | - | - | - | - | - | - | - | - |
-| CNN-LSTM-best | - | - | - | - | - | - | - | - |
-| wav2vec2 | - | - | - | - | - | - | - | - |
+| Μοντέλο | Accuracy | W-F1 | UAR(clean) | UAR(10dB) | UAR(5dB) | #Params | Time |
+|---------|----------|------|------------|-----------|----------|---------|------|
+| MLP-5 | 61.9% | 0.616 | 0.633 | - | - | - | - |
+| CNN-6 | 60.5% | 0.602 | 0.617 | - | - | - | - |
+| CNN-LSTM-best | - | - | - | - | - | - | - |
+| wav2vec2 | - | - | - | - | - | - | - |
 
 ---
 
@@ -290,7 +296,7 @@ Step 2 (dl_02_noise_augment.py) ✅
     ↓
 Step 3 (dl_03_train_mlp.py) ✅  →  Best: MLP-5, UAR=0.633
     ↓
-Step 4 (dl_04_train_cnn.py) 🔄
+Step 4 (dl_04_train_cnn.py) ✅  →  Best: CNN-6, UAR=0.617
     ↓
 Step 5 (dl_05_train_cnn_lstm.py)
     ↓

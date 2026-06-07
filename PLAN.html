@@ -772,32 +772,33 @@
 
         <!-- CNN -->
         <div class="arch-card cnn">
-            <div class="arch-head cnn">② dl_04_train_cnn.py — Mel-spectrogram + CNN <span class="badge wip">🔄 IN PROGRESS</span></div>
+            <div class="arch-head cnn">② dl_04_train_cnn.py — Mel-spectrogram + CNN <span class="badge done">✅ DONE</span></div>
             <div class="arch-step">
                 <div class="arch-label" style="color:var(--cnn)">Architecture</div>
                 Input(1,128,300) → [Conv2d→BN→ReLU→MaxPool] × N<br>
-                → AdaptiveAvgPool → Flatten → Linear → Dropout → Linear(4)
+                → AdaptiveAvgPool → Flatten → Linear → Dropout → Linear(4)<br>
+                batch=32 · GPU RTX 3060
             </div>
             <div class="arch-arr"><span>▼</span></div>
             <div class="arch-step">
-                <div class="arch-label" style="color:var(--cnn)">Hyperparameter Grid — 6 configs</div>
-                <table class="configs">
-                    <tr><th>Config</th><th>Blocks</th><th>Filters</th><th>Drop</th><th>LR</th></tr>
-                    <tr><td>CNN-1</td><td>2</td><td>[32, 64]</td><td>0.3</td><td>1e-3</td></tr>
-                    <tr><td>CNN-2</td><td>3</td><td>[32, 64, 128]</td><td>0.3</td><td>1e-3</td></tr>
-                    <tr><td>CNN-3</td><td>3</td><td>[64, 128, 256]</td><td>0.3</td><td>1e-3</td></tr>
-                    <tr><td>CNN-4</td><td>3</td><td>[32, 64, 128]</td><td>0.5</td><td>1e-3</td></tr>
-                    <tr><td>CNN-5</td><td>4</td><td>[32,64,128,256]</td><td>0.3</td><td>5e-4</td></tr>
-                    <tr><td style="color:var(--noise)">CNN-6★</td><td>3</td><td>[32, 64, 128]</td><td>0.3</td><td>1e-3</td></tr>
+                <div class="arch-label" style="color:var(--cnn)">Αποτελέσματα — 6 configs (test set)</div>
+                <table class="res-table">
+                    <tr><th>Config</th><th>Blocks</th><th>Filters</th><th>Drop</th><th>LR</th><th>Aug</th><th>Acc</th><th>W-F1</th><th>UAR</th><th>Ep</th></tr>
+                    <tr><td>CNN-1</td><td>2</td><td>[32,64]</td><td>0.3</td><td>1e-3</td><td>✗</td><td>49.7%</td><td>0.481</td><td>0.523</td><td>21</td></tr>
+                    <tr><td>CNN-2</td><td>3</td><td>[32,64,128]</td><td>0.3</td><td>1e-3</td><td>✗</td><td>55.6%</td><td>0.554</td><td>0.558</td><td>31</td></tr>
+                    <tr><td>CNN-3</td><td>3</td><td>[64,128,256]</td><td>0.3</td><td>1e-3</td><td>✗</td><td>55.2%</td><td>0.548</td><td>0.532</td><td>39</td></tr>
+                    <tr><td>CNN-4</td><td>3</td><td>[32,64,128]</td><td>0.5</td><td>1e-3</td><td>✗</td><td>54.7%</td><td>0.535</td><td>0.560</td><td>25</td></tr>
+                    <tr><td>CNN-5</td><td>4</td><td>[32,64,128,256]</td><td>0.3</td><td>5e-4</td><td>✗</td><td>57.6%</td><td>0.572</td><td>0.567</td><td>26</td></tr>
+                    <tr class="best"><td>CNN-6★</td><td>3</td><td>[32,64,128]</td><td>0.3</td><td>1e-3</td><td>✓</td><td>60.5%</td><td>0.602</td><td>0.617</td><td>80</td></tr>
                 </table>
-                <div style="font-size:8px; color:var(--noise); margin-top:3px;">★ CNN-6 = CNN-2 αρχιτεκτονική + augmented spectrograms</div>
+                <div style="font-size:8px; color:var(--cnn); margin-top:3px;">★ Best: CNN-6 UAR=0.617 · aug +5.9% vs CNN-2 · βάθος βοηθάει, πλάτος όχι</div>
             </div>
             <div class="arch-arr"><span>▼</span></div>
             <div class="arch-step">
-                <div class="arch-label" style="color:var(--cnn)">Training Details</div>
-                Dataset class: φορτώνει .npy on-the-fly<br>
-                Same scheduler / early stopping ως MLP<br>
-                Output: checkpoint + training curves
+                <div class="arch-label" style="color:var(--cnn)">vs MLP</div>
+                MLP-5 UAR=0.633 &gt; CNN-6 UAR=0.617<br>
+                Hand-crafted features νικούν mel-spectrograms<br>
+                στο μέγεθος του IEMOCAP (4424 train samples)
             </div>
         </div>
 
@@ -999,7 +1000,7 @@
         </div>
         <br>
         <span style="color:var(--mlp)">★ MLP:</span> 272D hand-crafted · Best: MLP-5 UAR=0.633 (4 layers, hidden=512, lr=5e-4) · v2 experiment (AdamW+class weights) απορρίφθηκε<br>
-        <span style="color:var(--cnn)">★ CNN:</span> Mel-spectrogram (1,128,300) · 6 configs (2–4 conv blocks, filters 32→256) · AdaptiveAvgPool head<br>
+        <span style="color:var(--cnn)">★ CNN:</span> Best: CNN-6 UAR=0.617 (3 blocks + augmented) · augmentation +5.9% UAR · MLP νικάει CNN στο μέγεθος του IEMOCAP<br>
         <span style="color:var(--cnnlstm)">★ CNN-LSTM:</span> CNN → BiLSTM → Attention pooling · 6 configs · Bi vs Uni-directional comparison<br>
         <span style="color:var(--w2v)">★ wav2vec2:</span> facebook/wav2vec2-base · custom attention pooling head · layer probing (1–12) + attention vis · upper bound<br>
         <span style="color:var(--noise)">★ Augmentation:</span> 5 conditions: Gaussian (5/10/20 dB) + Reverb (0.3/0.6s) · in-memory (no WAVs) · synthetic RIR · ΜΟΝΟ train set · 22.120 δείγματα<br>
