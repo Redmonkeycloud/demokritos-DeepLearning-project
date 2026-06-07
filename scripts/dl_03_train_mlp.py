@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, recall_score, confusion_matrix
+from sklearn.utils.class_weight import compute_class_weight
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
