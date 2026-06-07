@@ -1,0 +1,15 @@
+{
+  "accuracy": 0.5591689250225835,
+  "weighted_f1": 0.545858397182353,
+  "macro_f1": 0.5571510647204194,
+  "uar": 0.5792394921048314,
+  "best_val_f1": 0.553288650133378,
+  "epochs_trained": 41,
+  "cnn_blocks": 2,
+  "lstm_hidden": 128,
+  "lstm_layers": 1,
+  "bidirectional": true,
+  "dropout": 0.3,
+  "lr": 0.001,
+  "augmented": false
+}
