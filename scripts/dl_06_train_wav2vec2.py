@@ -1,15 +1,15 @@
-"""
+﻿"""
 Step 6: wav2vec2 fine-tuning for Speech Emotion Recognition.
 Model : facebook/wav2vec2-base (pretrained on LibriSpeech 960h)
-Head  : learnable attention pooling → Linear(768→256) → Linear(256→4)
+Head  : learnable attention pooling -> Linear(768->256) -> Linear(256->4)
 
 Training strategy (2 phases):
-  Phase 1 — Frozen   (epochs 1–FREEZE_EPOCHS): wav2vec2 fully frozen, train head only
-  Phase 2 — Finetune (epoch FREEZE_EPOCHS+1 onward): unfreeze last UNFREEZE_LAYERS
+  Phase 1 β€” Frozen   (epochs 1β€“FREEZE_EPOCHS): wav2vec2 fully frozen, train head only
+  Phase 2 β€” Finetune (epoch FREEZE_EPOCHS+1 onward): unfreeze last UNFREEZE_LAYERS
              transformer layers + feature_projection with layerwise LR decay
 
 Post-training analysis:
-  - Layer probing  : linear probe per layer (0–12) on test set → UAR curve
+  - Layer probing  : linear probe per layer (0β€“12) on test set -> UAR curve
   - Attention viz  : attention weight bar plots per emotion class
 """
 
@@ -53,7 +53,7 @@ SR             = 16_000
 MAX_LENGTH_SEC = 8               # truncate/pad audio to 8 seconds
 MAX_LENGTH     = MAX_LENGTH_SEC * SR
 
-BATCH_SIZE     = 16              # smaller batch — model is large
+BATCH_SIZE     = 16              # smaller batch β€” model is large
 MAX_EPOCHS     = 40
 PATIENCE       = 7
 VAL_FRAC       = 0.10
@@ -67,7 +67,7 @@ LAYERWISE_DECAY  = 0.9           # per-layer LR multiplier going down
 
 
 # ---------------------------------------------------------------------------
-# Path remapping (Docker → local)
+# Path remapping (Docker -> local)
 # ---------------------------------------------------------------------------
 def remap_path(docker_path: str, dataset_root: Path) -> Path:
     rel = docker_path.replace("/workspace/", "").replace("/", "\\")
@@ -97,6 +97,7 @@ class IEMOCAPWavDataset(Dataset):
             max_length=MAX_LENGTH,
             truncation=True,
             padding="max_length",
+            return_attention_mask=True,
             return_tensors="pt",
         )
         input_values   = inputs["input_values"].squeeze(0)    # (MAX_LENGTH,)
@@ -184,7 +185,7 @@ def get_finetune_params(model: Wav2Vec2SER):
     head_params = list(model.pool.parameters()) + list(model.classifier.parameters())
     groups.append({"params": head_params, "lr": LR_HEAD})
 
-    # Transformer layers (top → bottom, decaying LR)
+    # Transformer layers (top -> bottom, decaying LR)
     for i in range(total - 1, total - UNFREEZE_LAYERS - 1, -1):
         layer_lr = LR_FINETUNE * (LAYERWISE_DECAY ** (total - 1 - i))
         groups.append({
@@ -231,7 +232,7 @@ def evaluate(model, loader, device):
 # ---------------------------------------------------------------------------
 def layer_probing(model: Wav2Vec2SER, train_loader, test_loader, device):
     """Train a logistic regression probe on each hidden layer's mean-pooled output."""
-    print("\n── Layer Probing ──")
+    print("\n-- Layer Probing --")
     model.eval()
     n_layers = model.wav2vec2.config.num_hidden_layers  # 12
 
@@ -268,7 +269,7 @@ def layer_probing(model: Wav2Vec2SER, train_loader, test_loader, device):
     ax.plot(layers, uars, marker="o", color="#a855f7", linewidth=2)
     ax.set_xlabel("Layer index (0 = feature projection output)")
     ax.set_ylabel("UAR (test set)")
-    ax.set_title("wav2vec2 Layer Probing — Emotion Information per Layer")
+    ax.set_title("wav2vec2 Layer Probing β€” Emotion Information per Layer")
     ax.set_xticks(layers)
     ax.grid(alpha=0.3)
     plt.tight_layout()
@@ -288,7 +289,7 @@ def layer_probing(model: Wav2Vec2SER, train_loader, test_loader, device):
 # ---------------------------------------------------------------------------
 def visualize_attention(model: Wav2Vec2SER, test_loader, device):
     """Plot attention weights for 2 samples per emotion class."""
-    print("\n── Attention Visualization ──")
+    print("\n-- Attention Visualization --")
     model.eval()
 
     samples = {k: [] for k in range(4)}
@@ -312,7 +313,7 @@ def visualize_attention(model: Wav2Vec2SER, test_loader, device):
             w = weights.squeeze().cpu().numpy()
             ax = axes[cls_idx, j]
             ax.bar(range(len(w)), w, color="#a855f7", alpha=0.7, width=1.0)
-            ax.set_title(f"{cls_name} — sample {j+1}", fontsize=10)
+            ax.set_title(f"{cls_name} β€” sample {j+1}", fontsize=10)
             ax.set_xlabel("Time frame (~20ms each)")
             ax.set_ylabel("Attention weight")
 
@@ -333,7 +334,7 @@ def save_confusion_matrix(y_true, y_pred, name: str):
     sns.heatmap(cm, annot=True, fmt="d", cmap="Purples",
                 xticklabels=labels, yticklabels=labels, ax=ax)
     ax.set_xlabel("Predicted"); ax.set_ylabel("True")
-    ax.set_title(f"wav2vec2 — Confusion Matrix ({name})")
+    ax.set_title(f"wav2vec2 β€” Confusion Matrix ({name})")
     plt.tight_layout()
     plt.savefig(RESULT_DIR / f"confusion_{name}.png", dpi=120)
     plt.close()
@@ -374,10 +375,10 @@ def main():
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     RESULT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ── Feature extractor ──
+    # β”€β”€ Feature extractor β”€β”€
     extractor = Wav2Vec2FeatureExtractor.from_pretrained(MODEL_NAME)
 
-    # ── Data splits ──
+    # β”€β”€ Data splits β”€β”€
     df_train = pd.read_csv(SPLITS_DIR / "train.csv")
     df_test  = pd.read_csv(SPLITS_DIR / "test.csv")
 
@@ -395,12 +396,12 @@ def main():
     val_loader  = make_loader(df_val, extractor, dataset_root, shuffle=False)
     test_loader = make_loader(df_test, extractor, dataset_root, shuffle=False)
 
-    # ── Model ──
+    # β”€β”€ Model β”€β”€
     print(f"\nLoading {MODEL_NAME}...")
     model = Wav2Vec2SER(MODEL_NAME).to(device)
 
-    # ── Phase 1: Freeze wav2vec2, train head only ──
-    print(f"\n── Phase 1: Frozen (epochs 1–{FREEZE_EPOCHS}) ──")
+    # -- Phase 1: Freeze wav2vec2, train head only --
+    print(f"\n-- Phase 1: Frozen (epochs 1-{FREEZE_EPOCHS}) --")
     freeze_wav2vec2(model)
 
     optimizer = torch.optim.AdamW(
@@ -457,8 +458,8 @@ def main():
     print(f"\n  [Frozen] TEST UAR={frozen_metrics['uar']:.4f}  "
           f"Acc={frozen_metrics['accuracy']:.4f}")
 
-    # ── Phase 2: Unfreeze last layers + fine-tune ──
-    print(f"\n── Phase 2: Fine-tuning (last {UNFREEZE_LAYERS} layers) ──")
+    # -- Phase 2: Unfreeze last layers + fine-tune --
+    print(f"\n-- Phase 2: Fine-tuning (last {UNFREEZE_LAYERS} layers) --")
     unfreeze_last_layers(model, UNFREEZE_LAYERS)
 
     optimizer = torch.optim.AdamW(get_finetune_params(model), weight_decay=1e-4)
@@ -514,7 +515,7 @@ def main():
             print(f"  Early stopping at epoch {epoch + 1}")
             break
 
-    # ── Final evaluation ──
+    # β”€β”€ Final evaluation β”€β”€
     model.load_state_dict(best_state)
     torch.save(best_state, MODEL_DIR / "wav2vec2_finetuned_best.pt")
 
@@ -540,7 +541,7 @@ def main():
     save_confusion_matrix(y_true, y_pred, "finetuned")
     save_history(history)
 
-    # ── Post-training analysis ──
+    # β”€β”€ Post-training analysis β”€β”€
     tr_loader_noshuf = make_loader(df_tr, extractor, dataset_root, shuffle=False)
     layer_probing(model, tr_loader_noshuf, test_loader, device)
     visualize_attention(model, test_loader, device)
@@ -550,3 +551,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
