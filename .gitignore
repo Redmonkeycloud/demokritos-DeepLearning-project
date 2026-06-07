@@ -8,6 +8,8 @@ __pycache__/
 workflows/iemocap_dl/spectrograms/
 workflows/iemocap_dl/features/splits/80_20/train_augmented_features.csv
 workflows/iemocap_dl/features/splits/80_20/train_augmented_manifest.csv
+# Model checkpoints (large binaries)
+workflows/iemocap_dl/models/**/*.pt
 # Workflow outputs (per-workflow processed/models/results)
 workflows/iemocap_80_20/results/create_metrics_graphs.py
 workflows/iemocap_loso/results/create_metrics_graphs.py
