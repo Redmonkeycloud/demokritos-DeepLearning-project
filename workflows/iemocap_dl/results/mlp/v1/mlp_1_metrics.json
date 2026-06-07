@@ -1,0 +1,13 @@
+{
+  "accuracy": 0.6278229448961157,
+  "weighted_f1": 0.6273122559827504,
+  "macro_f1": 0.6312840418821254,
+  "uar": 0.6258206510127866,
+  "best_val_f1": 0.6385907858406753,
+  "epochs_trained": 18,
+  "n_layers": 2,
+  "hidden": 256,
+  "dropout": 0.3,
+  "lr": 0.001,
+  "augmented": false
+}
