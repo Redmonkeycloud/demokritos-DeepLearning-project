@@ -804,33 +804,37 @@
 
         <!-- CNN-LSTM -->
         <div class="arch-card cnnlstm">
-            <div class="arch-head cnnlstm">③ dl_05_train_cnn_lstm.py — Mel-spectrogram + CNN-LSTM</div>
+            <div class="arch-head cnnlstm">③ dl_05_train_cnn_lstm.py — Mel-spectrogram + CNN-LSTM <span class="badge done">✅ DONE</span></div>
             <div class="arch-step">
                 <div class="arch-label" style="color:var(--cnnlstm)">Architecture</div>
-                Input(1,128,T) → CNN blocks → squeeze + permute<br>
-                → shape(batch, T', C) → BiLSTM(C → H)<br>
-                → Attention pooling → Linear(2H) → Dropout → Linear(4)
+                Input(1,128,T) → CNN blocks → mean(freq) → (batch,T',C)<br>
+                → BiLSTM(C→H) → Attention pooling → Linear(2H) → Dropout → Linear(4)<br>
+                batch=32 · GPU RTX 3060
             </div>
             <div class="arch-arr"><span>▼</span></div>
             <div class="arch-step">
-                <div class="arch-label" style="color:var(--cnnlstm)">Hyperparameter Grid — 6 configs</div>
-                <table class="configs">
-                    <tr><th>Config</th><th>CNN</th><th>H</th><th>L</th><th>BiLSTM</th></tr>
-                    <tr><td>CL-1</td><td>2</td><td>128</td><td>1</td><td>True</td></tr>
-                    <tr><td>CL-2</td><td>2</td><td>256</td><td>1</td><td>True</td></tr>
-                    <tr><td>CL-3</td><td>2</td><td>128</td><td>2</td><td>True</td></tr>
-                    <tr><td>CL-4</td><td>3</td><td>128</td><td>1</td><td>True</td></tr>
-                    <tr><td>CL-5</td><td>2</td><td>128</td><td>1</td><td>False</td></tr>
-                    <tr><td style="color:var(--noise)">CL-6★</td><td>2</td><td>128</td><td>1</td><td>True</td></tr>
+                <div class="arch-label" style="color:var(--cnnlstm)">Αποτελέσματα — 6 configs (test set)</div>
+                <table class="res-table">
+                    <tr><th>Config</th><th>CNN</th><th>H</th><th>L</th><th>Bi</th><th>Aug</th><th>Acc</th><th>W-F1</th><th>UAR</th><th>Ep</th></tr>
+                    <tr class="best"><td>CL-1★</td><td>2</td><td>128</td><td>1</td><td>✓</td><td>✗</td><td>55.9%</td><td>0.546</td><td>0.579</td><td>41</td></tr>
+                    <tr><td>CL-2</td><td>2</td><td>256</td><td>1</td><td>✓</td><td>✗</td><td>56.9%</td><td>0.569</td><td>0.570</td><td>35</td></tr>
+                    <tr><td>CL-3</td><td>2</td><td>128</td><td>2</td><td>✓</td><td>✗</td><td>53.8%</td><td>0.539</td><td>0.534</td><td>18</td></tr>
+                    <tr><td>CL-4</td><td>3</td><td>128</td><td>1</td><td>✓</td><td>✗</td><td>56.3%</td><td>0.563</td><td>0.571</td><td>26</td></tr>
+                    <tr><td>CL-5</td><td>2</td><td>128</td><td>1</td><td>✗</td><td>✗</td><td>55.3%</td><td>0.553</td><td>0.563</td><td>28</td></tr>
+                    <tr><td>CL-6 aug</td><td>2</td><td>128</td><td>1</td><td>✓</td><td>✓</td><td>53.8%</td><td>0.536</td><td>0.544</td><td>100</td></tr>
                 </table>
-                <div style="font-size:8px; color:var(--noise); margin-top:3px;">★ CL-6 = CL-1 αρχιτεκτονική + augmented spectrograms</div>
+                <div style="font-size:8px; color:var(--cnnlstm); margin-top:3px;">★ Best: CL-1 UAR=0.579 — baseline wins · aug ΧΕΙΡΟΤΕΡΕΨΕ (val_f1=0.93 → overfit)</div>
             </div>
             <div class="arch-arr"><span>▼</span></div>
             <div class="arch-step">
-                <div class="arch-label" style="color:var(--cnnlstm)">Report Analysis</div>
-                CNN vs CNN-LSTM: αναδεικνύει<br>
-                αν η χρονική μοντελοποίηση βοηθά<br>
-                Bi-directional vs Uni-directional
+                <div class="arch-label" style="color:var(--cnnlstm)">Συμπεράσματα</div>
+                BiLSTM &gt; UniLSTM: +1.6% UAR (CL-1 vs CL-5)<br>
+                2 LSTM layers: overfit, χειρότερο (18ep)<br>
+                Aug overfit: val_f1=0.93 ≠ test UAR=0.544<br>
+                <br>
+                <strong>CNN-LSTM &lt; CNN &lt; MLP</strong><br>
+                Χρονική μοντελοποίηση δεν βοηθάει — η<br>
+                πολυπλοκότητα LSTM χρειάζεται περισσότερα data
             </div>
         </div>
 
@@ -1001,7 +1005,7 @@
         <br>
         <span style="color:var(--mlp)">★ MLP:</span> 272D hand-crafted · Best: MLP-5 UAR=0.633 (4 layers, hidden=512, lr=5e-4) · v2 experiment (AdamW+class weights) απορρίφθηκε<br>
         <span style="color:var(--cnn)">★ CNN:</span> Best: CNN-6 UAR=0.617 (3 blocks + augmented) · augmentation +5.9% UAR · MLP νικάει CNN στο μέγεθος του IEMOCAP<br>
-        <span style="color:var(--cnnlstm)">★ CNN-LSTM:</span> CNN → BiLSTM → Attention pooling · 6 configs · Bi vs Uni-directional comparison<br>
+        <span style="color:var(--cnnlstm)">★ CNN-LSTM:</span> Best: CL-1 UAR=0.579 (baseline!) · aug overfit (val=0.93, test=0.544) · χρονική μοντελοποίηση δεν βοηθάει με μικρό dataset<br>
         <span style="color:var(--w2v)">★ wav2vec2:</span> facebook/wav2vec2-base · custom attention pooling head · layer probing (1–12) + attention vis · upper bound<br>
         <span style="color:var(--noise)">★ Augmentation:</span> 5 conditions: Gaussian (5/10/20 dB) + Reverb (0.3/0.6s) · in-memory (no WAVs) · synthetic RIR · ΜΟΝΟ train set · 22.120 δείγματα<br>
         <span style="color:var(--eval)">★ Evaluation:</span> Clean + 7 noise conditions · UAR + W-F1 · robustness curves · augmentation impact analysis

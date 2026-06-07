@@ -174,7 +174,7 @@ Input(1, 128, 300)
 
 ---
 
-## Βήμα 5 — Architecture 3: Mel-spectrogram + CNN-LSTM
+## Βήμα 5 — Architecture 3: Mel-spectrogram + CNN-LSTM ✅ DONE
 
 **Script:** `dl_05_train_cnn_lstm.py`
 
@@ -182,26 +182,43 @@ Input(1, 128, 300)
 ```
 Input(1, 128, T)
 → [Conv2d → BN → ReLU → MaxPool] × N
-→ squeeze + permute → shape: (batch, T', C)
+→ mean over freq axis → (batch, T', C)
 → BiLSTM(input=C, hidden=H, layers=L)
 → Attention pooling over time steps
 → Linear(2H) → Dropout → Linear(4)
 ```
 
-**Hyperparameter Grid (6 configs):**
+**Training:** batch_size=32, GPU (RTX 3060)
 
-| Config | CNN blocks | LSTM H | LSTM L | BiLSTM | Notes |
-|--------|------------|--------|--------|--------|-------|
-| CL-1 | 2 | 128 | 1 | True | baseline |
-| CL-2 | 2 | 256 | 1 | True | +hidden |
-| CL-3 | 2 | 128 | 2 | True | +LSTM layers |
-| CL-4 | 3 | 128 | 1 | True | +CNN depth |
-| CL-5 | 2 | 128 | 1 | False | Uni-directional |
-| CL-6★ | 2 | 128 | 1 | True | + augmented data |
+### Αποτελέσματα
 
-★ CL-6 = CL-1 + augmented spectrograms
+| Config | CNN | LSTM H | LSTM L | BiLSTM | Aug | Accuracy | W-F1 | UAR | Epochs |
+|--------|-----|--------|--------|--------|-----|----------|------|-----|--------|
+| **CL-1** ★ | **2** | **128** | **1** | **✓** | **✗** | **55.9%** | **0.546** | **0.579** | **41** |
+| CL-2 | 2 | 256 | 1 | ✓ | ✗ | 56.9% | 0.569 | 0.570 | 35 |
+| CL-3 | 2 | 128 | 2 | ✓ | ✗ | 53.8% | 0.539 | 0.534 | 18 |
+| CL-4 | 3 | 128 | 1 | ✓ | ✗ | 56.3% | 0.563 | 0.571 | 26 |
+| CL-5 | 2 | 128 | 1 | ✗ | ✗ | 55.3% | 0.553 | 0.563 | 28 |
+| CL-6 aug | 2 | 128 | 1 | ✓ | ✓ | 53.8% | 0.536 | 0.544 | 100 |
 
-**Report Analysis:** CNN vs CNN-LSTM → αναδεικνύει αν η χρονική μοντελοποίηση βοηθάει. Bi vs Uni-directional LSTM comparison.
+**★ Best: CL-1** (UAR=0.579) — το απλούστερο config!
+
+### Βασικά Συμπεράσματα CNN-LSTM
+
+- **Augmentation ΧΕΙΡΟΤΕΡΕΨΕ** (CL-6 UAR=0.544 vs CL-1 UAR=0.579, -3.5%) — αντίθεση με CNN. val_f1=0.93 του CL-6 αποκαλύπτει overfitting: augmented versions ίδιων utterances καταλήγουν και στο val, επομένως το μοντέλο "απομνημονεύει" και δεν γενικεύεται σε clean test data.
+- **BiLSTM > UniLSTM** (CL-1 vs CL-5): UAR 0.579 vs 0.563 (+1.6%) — η αμφίδρομη ανάγνωση βοηθάει ελαφρά
+- **2 LSTM layers (CL-3) χειρότερο**: UAR 0.534, μόνο 18 epochs — overfitting λόγω μεγαλύτερης πολυπλοκότητας
+- **+CNN depth (CL-4)**: UAR 0.571 — οριακή διαφορά από baseline
+
+### CNN-LSTM vs προηγούμενα μοντέλα
+
+| Μοντέλο | Best UAR |
+|---------|---------|
+| MLP-5 | **0.633** |
+| CNN-6 | 0.617 |
+| CNN-LSTM CL-1 | 0.579 |
+
+**Η χρονική μοντελοποίηση (LSTM) ΔΕΝ βοηθάει** — το CNN-LSTM είναι χειρότερο από το CNN. Η πολυπλοκότητα του LSTM απαιτεί περισσότερα δεδομένα. Το mel-spectrogram ήδη ενσωματώνει χρονική πληροφορία μέσω του AdaptiveAvgPool.
 
 ---
 
@@ -264,7 +281,7 @@ facebook/wav2vec2-base (pretrained, HuggingFace)
 |---------|----------|------|------------|-----------|----------|---------|------|
 | MLP-5 | 61.9% | 0.616 | 0.633 | - | - | - | - |
 | CNN-6 | 60.5% | 0.602 | 0.617 | - | - | - | - |
-| CNN-LSTM-best | - | - | - | - | - | - | - |
+| CNN-LSTM CL-1 | 55.9% | 0.546 | 0.579 | - | - | - | - |
 | wav2vec2 | - | - | - | - | - | - | - |
 
 ---
@@ -298,7 +315,7 @@ Step 3 (dl_03_train_mlp.py) ✅  →  Best: MLP-5, UAR=0.633
     ↓
 Step 4 (dl_04_train_cnn.py) ✅  →  Best: CNN-6, UAR=0.617
     ↓
-Step 5 (dl_05_train_cnn_lstm.py)
+Step 5 (dl_05_train_cnn_lstm.py) ✅  →  Best: CL-1, UAR=0.579
     ↓
 Step 6 (dl_06_train_wav2vec2.py) ← GPU needed
     ↓
