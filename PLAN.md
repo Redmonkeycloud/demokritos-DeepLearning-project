@@ -5,16 +5,17 @@
 
 ---
 
-## Βήμα 0 — Setup & Dependencies
+## Βήμα 0 — Setup & Dependencies ✅ DONE
 
 **Script:** `dl_00_setup_workflow.py`
 
-**Νέα packages (προσθήκη στο requirements.txt):**
+**Packages που προστέθηκαν στο requirements.txt:**
 - `transformers` (HuggingFace — για wav2vec2)
 - `audiomentations` (για noise augmentation)
-- `torch` + `torchaudio` ήδη υπάρχουν ✓
+- `torch` ήδη υπήρχε ✓
+- `torchaudio` ❌ αφαιρέθηκε — χρησιμοποιούμε `librosa` παντού (ίδια λειτουργικότητα, λιγότερες εξαρτήσεις)
 
-**Νέα folder structure:**
+**Folder structure που δημιουργήθηκε:**
 ```
 workflows/iemocap_dl/
   features/splits/80_20/   ← copy των υπαρχόντων train.csv + test.csv
@@ -32,64 +33,73 @@ workflows/iemocap_dl/
 ```
 
 **Reuse από ML εξάμηνο:**
-- `train.csv` + `test.csv` (80/20 split) ✓
-- `iemocap_features.csv` (272D) ✓
-- `cremad_features.csv` ✓
-- Docker + base requirements.txt ✓
+- `train.csv` + `test.csv` (80/20 split, 4424 + 1107 δείγματα) ✓
+- `iemocap_features.csv` (272D, 5531 rows) ✓
+- WAV αρχεία: `D:\Users\User\Desktop\demokritos-ml-project\datasets\iemocap\`
+
+> **Σημείωση:** Docker δεν χρησιμοποιείται — τρέχουμε locally (Python 3.14, torch+cpu 2.9.1).
+> GPU (NVIDIA RTX 3060 12GB) θα ενεργοποιηθεί πριν το Βήμα 6 (wav2vec2).
 
 ---
 
-## Βήμα 1 — Data Preparation (παράλληλα)
+## Βήμα 1 — Data Preparation ✅ DONE
 
 ### 1A — 272D Features (υπάρχουν ήδη)
-Χρήση του υπάρχοντος `iemocap_features.csv`. Κανένα νέο script δεν χρειάζεται για τα clean features.
+Χρήση του υπάρχοντος `iemocap_features.csv`. Κανένα νέο script δεν χρειάζεται.
 
-### 1B — Mel-Spectrogram Extraction
+### 1B — Mel-Spectrogram Extraction ✅
 **Script:** `dl_01_extract_spectrograms.py`
 
-- Input: WAV paths από `train.csv` + `test.csv`
-- `torchaudio.load()` → Resample 16kHz
-- `MelSpectrogram`: n_mels=128, hop_length=160 (10ms), win_length=400 (25ms), n_fft=1024
-- Log scale (`amplitude_to_DB`)
-- Pad/truncate → 3 δευτερόλεπτα = 300 time frames
-- Shape τελικό: `(1, 128, 300)`
+- Input: WAV paths από `train.csv` + `test.csv` (path remapping `/workspace` → local)
+- `librosa.load()` → 16kHz (αντί torchaudio)
+- `librosa.feature.melspectrogram()`: n_mels=128, hop_length=160 (10ms), win_length=400 (25ms), n_fft=1024
+- `librosa.power_to_db()` (log scale)
+- Pad/truncate → 300 time frames (3 δευτερόλεπτα)
+- Shape τελικό: `(1, 128, 300)` — float32, range [-80, 0] dB
 - Αποθήκευση ανά αρχείο ως `.npy`
+- **Αποτέλεσμα:** 4424 train + 1107 test spectrograms, ~811 MB
 - Output: `train_manifest.csv` + `test_manifest.csv`
 
 ### 1C — Raw Audio για wav2vec2
-Δεν χρειάζεται pre-extraction. Το wav2vec2 Dataset class φορτώνει raw WAV on-the-fly, resample 16kHz, max length 10s, μέσω `AutoFeatureExtractor`.
+Δεν χρειάζεται pre-extraction. Το wav2vec2 Dataset class φορτώνει raw WAV on-the-fly.
 
 ---
 
-## Βήμα 2 — Noise Augmentation (TRAIN ONLY)
+## Βήμα 2 — Noise Augmentation (TRAIN ONLY) ✅ DONE
 
 **Script:** `dl_02_noise_augment.py`
 
 > ⚠️ DATA LEAKAGE: Augmented δείγματα ΜΟΝΟ στο train set. Test set παραμένει clean και untouched.
 
-**Τύποι augmentation (audiomentations):**
-- `AddGaussianNoise`: SNR = 5dB, 10dB, 20dB
-- `AddBackgroundNoise`: SNR = 10dB (MUSAN dataset)
-- `RoomSimulator`: RT60 = 0.3s, 0.6s
+**Τύποι augmentation (5 conditions — χωρίς MUSAN):**
+
+| Condition | Τύπος | Παράμετρος |
+|-----------|-------|------------|
+| gauss_20 | Gaussian noise | SNR = 20 dB |
+| gauss_10 | Gaussian noise | SNR = 10 dB |
+| gauss_5 | Gaussian noise | SNR = 5 dB |
+| room_03 | Reverberation | RT60 = 0.3s |
+| room_06 | Reverberation | RT60 = 0.6s |
+
+> **Αλλαγή από plan:** Αφαιρέθηκε το `AddBackgroundNoise` (MUSAN dataset ~11GB).
+> Αντικατάσταση reverberation: synthetic exponential-decay RIR (χωρίς pyroomacoustics).
+> Augmented WAVs δεν αποθηκεύονται — επεξεργασία in-memory.
+
+**Αποτέλεσμα:** 4424 × 5 = **22,120 augmented samples**
 
 **Output για MLP:**
-- Augmented WAVs → `datasets/iemocap_augmented/`
-- Εξαγωγή 272D features (pyAudioAnalysis, ίδιες παράμετροι)
-- `train_augmented_features.csv`
+- Εξαγωγή 272D features (pyAudioAnalysis, ίδιες παράμετροι: ST_WIN=50ms, ST_STEP=25ms)
+- `train_augmented_features.csv` (22,120 rows × 275 cols) — gitignored
 
 **Output για CNN/CNN-LSTM:**
-- Mel-spectrograms από augmented WAVs (.npy)
-- `train_augmented_manifest.csv`
+- Mel-spectrograms (.npy), shape (1, 128, 300) — gitignored (~3.3GB)
+- `train_augmented_manifest.csv` — gitignored
 
-**Για wav2vec2:**
-- On-the-fly augmentation στο Dataset `__getitem__`
-
-**Για Evaluation (Βήμα 7):**
-- Noisy test versions δημιουργούνται on-the-fly, ΔΕΝ αποθηκεύονται
+**Για wav2vec2:** On-the-fly augmentation στο Dataset `__getitem__`
 
 ---
 
-## Βήμα 3 — Architecture 1: Hand-crafted Features + MLP
+## Βήμα 3 — Architecture 1: Hand-crafted Features + MLP ✅ DONE
 
 **Script:** `dl_03_train_mlp.py`
 
@@ -98,55 +108,63 @@ workflows/iemocap_dl/
 Input(272) → [Linear → BatchNorm → ReLU → Dropout] × N → Linear(4)
 ```
 
-**Hyperparameter Grid (6 configs):**
+**Training setup:**
+- Loss: CrossEntropyLoss | Optimizer: Adam | Scheduler: CosineAnnealingLR
+- Early stopping: patience=10 (val weighted F1) | Val: 10% train (stratified)
 
-| Config | Layers | Hidden | Dropout | LR    | Notes |
-|--------|--------|--------|---------|-------|-------|
-| MLP-1  | 2      | 256    | 0.3     | 1e-3  | baseline |
-| MLP-2  | 3      | 256    | 0.3     | 1e-3  | +depth |
-| MLP-3  | 3      | 512    | 0.3     | 1e-3  | +width |
-| MLP-4  | 3      | 512    | 0.5     | 1e-3  | +dropout |
-| MLP-5  | 4      | 512    | 0.3     | 5e-4  | deeper+slowLR |
-| MLP-6★ | 3      | 256    | 0.3     | 1e-3  | + augmented data |
+### Αποτελέσματα — Run v1 (τελικό)
 
-★ MLP-6 = MLP-2 αρχιτεκτονική + augmented train set
+| Config | Layers | Hidden | Dropout | LR | Accuracy | W-F1 | UAR | Epochs |
+|--------|--------|--------|---------|-----|----------|------|-----|--------|
+| MLP-1 | 2 | 256 | 0.3 | 1e-3 | 62.8% | 0.627 | 0.626 | 18 |
+| MLP-2 | 3 | 256 | 0.3 | 1e-3 | 61.2% | 0.609 | 0.630 | 19 |
+| MLP-3 | 3 | 512 | 0.3 | 1e-3 | 59.9% | 0.599 | 0.602 | 34 |
+| MLP-4 | 3 | 512 | 0.5 | 1e-3 | 62.5% | 0.623 | 0.629 | 20 |
+| **MLP-5** ★ | **4** | **512** | **0.3** | **5e-4** | **61.9%** | **0.616** | **0.633** | 16 |
+| MLP-6 aug | 3 | 256 | 0.3 | 1e-3 | 61.2% | 0.611 | 0.616 | 93 |
 
-**Training:**
-- Loss: CrossEntropyLoss
-- Optimizer: Adam
-- Scheduler: CosineAnnealingLR
-- Early stopping: patience=10 (val F1)
-- Validation: 10% του train (stratified)
-- Metrics: Accuracy, Weighted F1, Macro F1, UAR, Confusion Matrix
+**★ Best: MLP-5** (UAR=0.633)
+
+### Πειραματισμός — Run v2 (απορρίφθηκε)
+
+Δοκιμάστηκαν 3 αλλαγές: **AdamW** (weight_decay=1e-4) + **class-weighted loss** + **patience=20**.
+Αποτέλεσμα: χειρότερο σε όλα τα configs (best UAR 0.622 vs 0.633).
+
+**Αιτία:** Το IEMOCAP 80/20 split είναι ήδη αρκετά balanced — τα class weights στρέβλωσαν την εκπαίδευση αντί να βοηθήσουν. Επαναφορά στο v1.
+
+### Βασικά Συμπεράσματα MLP
+- Το **πλάτος** (MLP-3, hidden=512) χωρίς αύξηση βάθους δεν βοηθάει
+- Η **augmentation** (MLP-6) δεν βελτίωσε — 93 epochs για σύγκλιση, χωρίς κέρδος
+- Το **βάθος + μικρό LR** (MLP-5) έδωσε το καλύτερο αποτέλεσμα
 
 ---
 
-## Βήμα 4 — Architecture 2: Mel-spectrogram + CNN
+## Βήμα 4 — Architecture 2: Mel-spectrogram + CNN 🔄 IN PROGRESS
 
 **Script:** `dl_04_train_cnn.py`
 
 **Architecture:**
 ```
 Input(1, 128, 300)
-→ [Conv2d(in, out, 3×3) → BatchNorm → ReLU → MaxPool(2×2)] × N
-→ AdaptiveAvgPool → Flatten
-→ Linear → Dropout → Linear(4)
+→ [Conv2d(3×3) → BatchNorm2d → ReLU → MaxPool(2×2)] × N
+→ AdaptiveAvgPool2d(1,1) → Flatten
+→ Linear(C→256) → ReLU → Dropout → Linear(256→4)
 ```
 
 **Hyperparameter Grid (6 configs):**
 
-| Config | Blocks | Filters          | Dropout | LR    | Notes |
-|--------|--------|------------------|---------|-------|-------|
-| CNN-1  | 2      | [32, 64]         | 0.3     | 1e-3  | baseline |
-| CNN-2  | 3      | [32, 64, 128]    | 0.3     | 1e-3  | +depth |
-| CNN-3  | 3      | [64, 128, 256]   | 0.3     | 1e-3  | +width |
-| CNN-4  | 3      | [32, 64, 128]    | 0.5     | 1e-3  | +dropout |
-| CNN-5  | 4      | [32,64,128,256]  | 0.3     | 5e-4  | deeper+slowLR |
-| CNN-6★ | 3      | [32, 64, 128]    | 0.3     | 1e-3  | + augmented data |
+| Config | Blocks | Filters | Dropout | LR | Notes |
+|--------|--------|---------|---------|-----|-------|
+| CNN-1 | 2 | [32, 64] | 0.3 | 1e-3 | baseline |
+| CNN-2 | 3 | [32, 64, 128] | 0.3 | 1e-3 | +depth |
+| CNN-3 | 3 | [64, 128, 256] | 0.3 | 1e-3 | +width |
+| CNN-4 | 3 | [32, 64, 128] | 0.5 | 1e-3 | +dropout |
+| CNN-5 | 4 | [32, 64, 128, 256] | 0.3 | 5e-4 | deeper+slowLR |
+| CNN-6★ | 3 | [32, 64, 128] | 0.3 | 1e-3 | + augmented data |
 
 ★ CNN-6 = CNN-2 αρχιτεκτονική + augmented spectrograms
 
-**Training:** Ίδιο setup με MLP (early stopping, cosine scheduler). Dataset class φορτώνει `.npy` on-the-fly.
+**Training:** batch_size=32, ίδιο setup με MLP. Dataset class φορτώνει `.npy` on-the-fly.
 
 ---
 
@@ -157,8 +175,8 @@ Input(1, 128, 300)
 **Architecture:**
 ```
 Input(1, 128, T)
-→ [Conv2d → BN → ReLU → MaxPool] × N     # CNN blocks
-→ squeeze + permute → shape: (batch, T', C)  # time-first για LSTM
+→ [Conv2d → BN → ReLU → MaxPool] × N
+→ squeeze + permute → shape: (batch, T', C)
 → BiLSTM(input=C, hidden=H, layers=L)
 → Attention pooling over time steps
 → Linear(2H) → Dropout → Linear(4)
@@ -168,16 +186,16 @@ Input(1, 128, T)
 
 | Config | CNN blocks | LSTM H | LSTM L | BiLSTM | Notes |
 |--------|------------|--------|--------|--------|-------|
-| CL-1   | 2          | 128    | 1      | True   | baseline |
-| CL-2   | 2          | 256    | 1      | True   | +hidden |
-| CL-3   | 2          | 128    | 2      | True   | +LSTM layers |
-| CL-4   | 3          | 128    | 1      | True   | +CNN depth |
-| CL-5   | 2          | 128    | 1      | False  | Uni-directional |
-| CL-6★  | 2          | 128    | 1      | True   | + augmented data |
+| CL-1 | 2 | 128 | 1 | True | baseline |
+| CL-2 | 2 | 256 | 1 | True | +hidden |
+| CL-3 | 2 | 128 | 2 | True | +LSTM layers |
+| CL-4 | 3 | 128 | 1 | True | +CNN depth |
+| CL-5 | 2 | 128 | 1 | False | Uni-directional |
+| CL-6★ | 2 | 128 | 1 | True | + augmented data |
 
 ★ CL-6 = CL-1 + augmented spectrograms
 
-**Report Analysis:** Σύγκριση CNN vs CNN-LSTM αναδεικνύει αν η χρονική μοντελοποίηση βοηθάει στο SER. Bi vs Uni-directional LSTM comparison.
+**Report Analysis:** CNN vs CNN-LSTM → αναδεικνύει αν η χρονική μοντελοποίηση βοηθάει. Bi vs Uni-directional LSTM comparison.
 
 ---
 
@@ -198,15 +216,14 @@ facebook/wav2vec2-base (pretrained, HuggingFace)
 
 **Training Strategy:**
 - Epochs 1-5: feature extractor frozen
-- Epoch 6+: unfreeze, layerwise LR decay (transformer layers: μικρότερο LR)
+- Epoch 6+: unfreeze, layerwise LR decay
 - Optimizer: AdamW + weight decay
-- ⚠️ Απαιτεί GPU — βαρύ μοντέλο
+- ⚠️ Απαιτεί GPU — πριν την εκτέλεση: `pip install torch==2.9.1 --index-url https://download.pytorch.org/whl/cu126`
 
-**Απαιτούμενη Ανάλυση (για report — ΟΧΙ απλό fine-tuning):**
-1. **Attention weight visualization:** ποια time frames "κοιτάει" για κάθε emotion class
-2. **Layer probing (layers 1-12):** train linear probe ανά layer → πότε "μαθαίνει" το emotion
-3. **Frozen vs fine-tuned comparison:** πόσο βοηθάει το fine-tuning
-4. **Αιτιολόγηση** γιατί υπερτερεί (ή όχι) έναντι CNN-LSTM
+**Απαιτούμενη Ανάλυση (για report):**
+1. Attention weight visualization
+2. Layer probing (layers 1-12)
+3. Frozen vs fine-tuned comparison
 
 ---
 
@@ -219,15 +236,14 @@ facebook/wav2vec2-base (pretrained, HuggingFace)
 **Noise conditions (on-the-fly, ΔΕΝ αποθηκεύονται):**
 - Clean (baseline)
 - Gaussian: SNR = 20dB, 10dB, 5dB, 0dB
-- Background noise: SNR = 10dB
 - Reverberation: RT60 = 0.3s, 0.6s
 
 **Metrics ανά condition:** UAR, Weighted F1
 
 **Output:**
-- `robustness_curves.png` (x=SNR, y=UAR, 1 γραμμή/αρχιτεκτονική)
+- `robustness_curves.png`
 - `robustness_summary.csv`
-- `per_model_degradation.png` (% drop from clean baseline)
+- `per_model_degradation.png`
 - Heatmap: μοντέλο × noise condition
 
 ---
@@ -240,15 +256,10 @@ facebook/wav2vec2-base (pretrained, HuggingFace)
 
 | Μοντέλο | Accuracy | W-F1 | Macro-F1 | UAR(clean) | UAR(10dB) | UAR(5dB) | #Params | Time |
 |---------|----------|------|----------|------------|-----------|----------|---------|------|
-| MLP-best | - | - | - | - | - | - | - | - |
+| MLP-5 | 61.9% | 0.616 | 0.624 | 0.633 | - | - | - | - |
 | CNN-best | - | - | - | - | - | - | - | - |
 | CNN-LSTM-best | - | - | - | - | - | - | - | - |
 | wav2vec2 | - | - | - | - | - | - | - | - |
-
-**Επιπλέον plots:**
-- Hyperparameter sensitivity ανά αρχιτεκτονική (val F1 vs depth/size)
-- Confusion matrices (best model ανά arch)
-- Augmentation impact: clean-train vs aug-train
 
 ---
 
@@ -271,14 +282,19 @@ facebook/wav2vec2-base (pretrained, HuggingFace)
 ## Σειρά Εκτέλεσης
 
 ```
-Step 0 (setup)
+Step 0 (setup) ✅
     ↓
-Step 1 (dl_01_extract_spectrograms.py)
+Step 1 (dl_01_extract_spectrograms.py) ✅
     ↓
-Step 2 (dl_02_noise_augment.py)
+Step 2 (dl_02_noise_augment.py) ✅
     ↓
-Steps 3, 4, 5, 6 ⚡ παράλληλα
-(dl_03 + dl_04 + dl_05 + dl_06)
+Step 3 (dl_03_train_mlp.py) ✅  →  Best: MLP-5, UAR=0.633
+    ↓
+Step 4 (dl_04_train_cnn.py) 🔄
+    ↓
+Step 5 (dl_05_train_cnn_lstm.py)
+    ↓
+Step 6 (dl_06_train_wav2vec2.py) ← GPU needed
     ↓
 Step 7 (dl_07_noise_robustness_eval.py)
     ↓

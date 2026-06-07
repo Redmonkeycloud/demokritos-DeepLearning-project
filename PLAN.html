@@ -496,6 +496,61 @@
             border: 1px dashed var(--border);
             border-radius: 6px;
         }
+
+        /* ── STATUS BADGES ── */
+        .badge {
+            display: inline-block;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 4px;
+            margin-left: 8px;
+            vertical-align: middle;
+            letter-spacing: 0.5px;
+        }
+        .badge.done { background: #10b98133; color: #10b981; border: 1px solid #10b98155; }
+        .badge.wip  { background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b55; }
+
+        /* ── RESULTS TABLE ── */
+        .res-table {
+            border-collapse: collapse;
+            width: 100%;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 8px;
+            margin-top: 6px;
+        }
+        .res-table th {
+            color: var(--text-dim);
+            font-weight: 600;
+            text-align: left;
+            padding: 2px 4px;
+            border-bottom: 1px solid var(--border);
+        }
+        .res-table td { color: var(--text); padding: 2px 4px; }
+        .res-table tr:hover td { background: #ffffff08; }
+        .res-table .best td { color: var(--mlp); font-weight: 700; }
+
+        /* ── EXPERIMENT BOX ── */
+        .exp-box {
+            margin-top: 7px;
+            padding: 7px 9px;
+            background: #ef444411;
+            border: 1px solid #ef444444;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            color: #fca5a5;
+            line-height: 1.6;
+        }
+        .exp-box .exp-title {
+            font-weight: 700;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 4px;
+            color: #ef4444;
+        }
     </style>
 </head>
 <body>
@@ -528,15 +583,17 @@
     <div class="step-label">── STEP 0 — SETUP &amp; DEPENDENCIES ──</div>
 
     <div class="node data">
-        <div class="n-head data">⚙️ dl_00_setup_workflow.py</div>
+        <div class="n-head data">⚙️ dl_00_setup_workflow.py <span class="badge done">✅ DONE</span></div>
         <div class="n-body">
             <div class="branches">
                 <div class="br">
-                    <div class="br-title" style="color:var(--data)">Νέα packages</div>
-                    <span class="tag data">torch</span> <span class="tag data">torchaudio</span> ✓<br>
-                    <span class="tag w2v">transformers</span> ← νέο<br>
-                    <span class="tag noise">audiomentations</span> ← νέο<br>
-                    → rebuild Docker container
+                    <div class="br-title" style="color:var(--data)">Packages</div>
+                    <span class="tag data">torch</span> 2.9.1 (cpu) ✓<br>
+                    <span class="tag w2v">transformers</span> ← προστέθηκε<br>
+                    <span class="tag noise">audiomentations</span> ← προστέθηκε<br>
+                    <span class="tag data">librosa</span> ← χρήση αντί torchaudio<br>
+                    <span style="color:#ef4444; font-size:8px;">✗ torchaudio αφαιρέθηκε</span><br>
+                    <div class="note warn" style="margin-top:5px;">Docker ΔΕΝ χρησιμοποιείται — τρέχουμε locally (Python 3.14)</div>
                 </div>
                 <div class="br">
                     <div class="br-title" style="color:var(--data)">Folder Structure</div>
@@ -551,9 +608,11 @@
                     <div class="br-title" style="color:var(--data)">Reuse από ML εξάμηνο</div>
                     train.csv + test.csv ✓<br>
                     iemocap_features.csv ✓<br>
-                    cremad_features.csv ✓<br>
-                    Docker + requirements.txt<br>
-                    (base για νέο container)
+                    (272D, 5531 rows)<br>
+                    scaler.pkl ✓<br>
+                    <br>
+                    WAV αρχεία:<br>
+                    D:\...\datasets\iemocap\
                 </div>
             </div>
         </div>
@@ -562,7 +621,7 @@
     <div class="arr-down"></div>
 
     <!-- STEP 1 -->
-    <div class="step-label">── STEP 1 — DATA PREPARATION ⚡ Παράλληλα ──</div>
+    <div class="step-label">── STEP 1 — DATA PREPARATION <span class="badge done">✅ DONE</span> ──</div>
 
     <div class="split3">
         <span class="arr-item" style="color:var(--mlp)">▼ 272D features</span>
@@ -586,16 +645,18 @@
 
         <div class="dp-card cnn">
             <div class="dp-head cnn">🎛️ dl_01_extract_spectrograms.py</div>
-            <span class="tag cnn">torchaudio.load()</span> → 16 kHz<br>
-            <span class="tag cnn">MelSpectrogram</span>:<br>
+            <span class="tag cnn">librosa.load()</span> → 16 kHz<br>
+            <span class="tag cnn">melspectrogram</span>:<br>
             &nbsp;n_mels=128, hop=160 (10ms)<br>
             &nbsp;win=400 (25ms), n_fft=1024<br>
-            → Log scale (amplitude_to_DB)<br>
+            → Log scale (power_to_db)<br>
             → Pad/truncate: <span class="tag cnn">3s = 300 frames</span><br>
             → Shape: <span class="tag cnn">(1, 128, 300)</span><br>
             → Αποθήκευση ανά αρχείο: <span class="tag cnn">.npy</span><br>
             → train_manifest.csv<br>
-            &nbsp;&nbsp;test_manifest.csv
+            &nbsp;&nbsp;test_manifest.csv<br>
+            <br>
+            <span style="color:var(--data); font-size:8px;">4424 train + 1107 test (~811 MB)</span>
         </div>
 
         <div class="dp-card w2v">
@@ -619,24 +680,26 @@
     <div class="step-label">── STEP 2 — NOISE AUGMENTATION (TRAIN ONLY) ──</div>
 
     <div class="node noise">
-        <div class="n-head noise">⚠️ dl_02_noise_augment.py</div>
+        <div class="n-head noise">⚠️ dl_02_noise_augment.py <span class="badge done">✅ DONE</span></div>
         <div class="n-body">
             <div class="note warn">⛔ DATA LEAKAGE ΠΡΟΣΟΧΗ: Augmented δείγματα ΜΟΝΟ στο train set. Test set παραμένει clean και untouched σε όλα τα βήματα.</div>
             <div class="branches" style="margin-top:10px;">
                 <div class="br">
-                    <div class="br-title" style="color:var(--noise)">Augmentation Types</div>
-                    <span class="tag noise">AddGaussianNoise</span><br>
-                    &nbsp;SNR: 5 dB / 10 dB / 20 dB<br>
-                    <span class="tag noise">AddBackgroundNoise</span><br>
-                    &nbsp;SNR: 10 dB (MUSAN)<br>
-                    <span class="tag noise">RoomSimulator</span><br>
-                    &nbsp;RT60: 0.3s / 0.6s<br>
-                    Library: <span class="tag noise">audiomentations</span>
+                    <div class="br-title" style="color:var(--noise)">5 Conditions (χωρίς MUSAN)</div>
+                    <span class="tag noise">gauss_20</span> SNR=20 dB<br>
+                    <span class="tag noise">gauss_10</span> SNR=10 dB<br>
+                    <span class="tag noise">gauss_5</span> SNR=5 dB<br>
+                    <span class="tag noise">room_03</span> RT60=0.3s<br>
+                    <span class="tag noise">room_06</span> RT60=0.6s<br>
+                    <br>
+                    Reverb: synthetic exp-decay RIR<br>
+                    (numpy, χωρίς pyroomacoustics)<br>
+                    <span style="color:var(--data); font-size:8px;">4424 × 5 = 22.120 δείγματα</span>
                 </div>
                 <div class="br">
                     <div class="br-title" style="color:var(--mlp)">Output για MLP</div>
-                    → Augmented WAVs<br>
-                    &nbsp;datasets/iemocap_augmented/<br>
+                    Επεξεργασία <strong>in-memory</strong><br>
+                    (δεν αποθηκεύονται WAVs)<br>
                     → Εξαγωγή 272D features<br>
                     &nbsp;(pyAudioAnalysis, ίδιες παράμ.)<br>
                     → <span class="tag mlp">train_augmented_features.csv</span><br>
@@ -645,7 +708,7 @@
                 <div class="br">
                     <div class="br-title" style="color:var(--cnn)">Output για CNN/CNN-LSTM</div>
                     → Mel-spectrograms (.npy)<br>
-                    &nbsp;από augmented WAVs<br>
+                    &nbsp;spectrograms/train_augmented/<br>
                     → <span class="tag cnn">train_augmented_manifest.csv</span><br>
                     concat manifest για aug config<br>
                     <br>
@@ -676,39 +739,40 @@
 
         <!-- MLP -->
         <div class="arch-card mlp">
-            <div class="arch-head mlp">① dl_03_train_mlp.py — Hand-crafted + MLP</div>
+            <div class="arch-head mlp">① dl_03_train_mlp.py — Hand-crafted + MLP <span class="badge done">✅ DONE</span></div>
             <div class="arch-step">
                 <div class="arch-label" style="color:var(--mlp)">Architecture</div>
                 Input(272) → [Linear → BN → ReLU → Dropout] × N → Linear(4)<br>
-                Loss: CrossEntropy · Optimizer: Adam · Scheduler: Cosine
+                Loss: CrossEntropy · Optimizer: Adam · Scheduler: Cosine<br>
+                patience=10 · val=10% stratified · batch=64
             </div>
             <div class="arch-arr"><span>▼</span></div>
             <div class="arch-step">
-                <div class="arch-label" style="color:var(--mlp)">Hyperparameter Grid — 6 configs</div>
-                <table class="configs">
-                    <tr><th>Config</th><th>Layers</th><th>Hidden</th><th>Dropout</th><th>LR</th></tr>
-                    <tr><td>MLP-1</td><td>2</td><td>256</td><td>0.3</td><td>1e-3</td></tr>
-                    <tr><td>MLP-2</td><td>3</td><td>256</td><td>0.3</td><td>1e-3</td></tr>
-                    <tr><td>MLP-3</td><td>3</td><td>512</td><td>0.3</td><td>1e-3</td></tr>
-                    <tr><td>MLP-4</td><td>3</td><td>512</td><td>0.5</td><td>1e-3</td></tr>
-                    <tr><td>MLP-5</td><td>4</td><td>512</td><td>0.3</td><td>5e-4</td></tr>
-                    <tr><td style="color:var(--noise)">MLP-6★</td><td>3</td><td>256</td><td>0.3</td><td>1e-3</td></tr>
+                <div class="arch-label" style="color:var(--mlp)">Αποτελέσματα — 6 configs (test set)</div>
+                <table class="res-table">
+                    <tr><th>Config</th><th>Layers</th><th>Hidden</th><th>Drop</th><th>LR</th><th>Acc</th><th>W-F1</th><th>UAR</th><th>Ep</th></tr>
+                    <tr><td>MLP-1</td><td>2</td><td>256</td><td>0.3</td><td>1e-3</td><td>62.8%</td><td>0.627</td><td>0.626</td><td>18</td></tr>
+                    <tr><td>MLP-2</td><td>3</td><td>256</td><td>0.3</td><td>1e-3</td><td>61.2%</td><td>0.609</td><td>0.630</td><td>19</td></tr>
+                    <tr><td>MLP-3</td><td>3</td><td>512</td><td>0.3</td><td>1e-3</td><td>59.9%</td><td>0.599</td><td>0.602</td><td>34</td></tr>
+                    <tr><td>MLP-4</td><td>3</td><td>512</td><td>0.5</td><td>1e-3</td><td>62.5%</td><td>0.623</td><td>0.629</td><td>20</td></tr>
+                    <tr class="best"><td>MLP-5★</td><td>4</td><td>512</td><td>0.3</td><td>5e-4</td><td>61.9%</td><td>0.616</td><td>0.633</td><td>16</td></tr>
+                    <tr><td>MLP-6 aug</td><td>3</td><td>256</td><td>0.3</td><td>1e-3</td><td>61.2%</td><td>0.611</td><td>0.616</td><td>93</td></tr>
                 </table>
-                <div style="font-size:8px; color:var(--noise); margin-top:3px;">★ MLP-6 = MLP-2 αρχιτεκτονική + augmented train set</div>
+                <div style="font-size:8px; color:var(--mlp); margin-top:3px;">★ Best: MLP-5 UAR=0.633 · aug δεν βελτίωσε (93 epochs, χωρίς κέρδος)</div>
             </div>
             <div class="arch-arr"><span>▼</span></div>
-            <div class="arch-step">
-                <div class="arch-label" style="color:var(--mlp)">Training Details</div>
-                Early stopping: patience=10 (val F1)<br>
-                Val: 10% train (stratified)<br>
-                Metrics: Acc · W-F1 · Macro-F1 · UAR<br>
-                Output: checkpoint + training curves
+            <div class="exp-box">
+                <div class="exp-title">⚗️ Πείραμα v2 — Απορρίφθηκε</div>
+                AdamW (wd=1e-4) + class-weighted loss + patience=20<br>
+                → Χειρότερο σε όλα: best UAR 0.622 vs 0.633<br>
+                <strong>Αιτία:</strong> IEMOCAP split ήδη balanced — class weights στρεβλώνουν training<br>
+                → Επαναφορά στο v1
             </div>
         </div>
 
         <!-- CNN -->
         <div class="arch-card cnn">
-            <div class="arch-head cnn">② dl_04_train_cnn.py — Mel-spectrogram + CNN</div>
+            <div class="arch-head cnn">② dl_04_train_cnn.py — Mel-spectrogram + CNN <span class="badge wip">🔄 IN PROGRESS</span></div>
             <div class="arch-step">
                 <div class="arch-label" style="color:var(--cnn)">Architecture</div>
                 Input(1,128,300) → [Conv2d→BN→ReLU→MaxPool] × N<br>
@@ -934,11 +998,11 @@
             <span class="exec-step" style="border-color:var(--eval); color:var(--eval); background:var(--eval-dim)">Step 8 — dl_08</span>
         </div>
         <br>
-        <span style="color:var(--mlp)">★ MLP:</span> 272D hand-crafted · 6 configs (layers 2–4, hidden 256/512, dropout 0.3/0.5) · early stopping on val F1<br>
+        <span style="color:var(--mlp)">★ MLP:</span> 272D hand-crafted · Best: MLP-5 UAR=0.633 (4 layers, hidden=512, lr=5e-4) · v2 experiment (AdamW+class weights) απορρίφθηκε<br>
         <span style="color:var(--cnn)">★ CNN:</span> Mel-spectrogram (1,128,300) · 6 configs (2–4 conv blocks, filters 32→256) · AdaptiveAvgPool head<br>
         <span style="color:var(--cnnlstm)">★ CNN-LSTM:</span> CNN → BiLSTM → Attention pooling · 6 configs · Bi vs Uni-directional comparison<br>
         <span style="color:var(--w2v)">★ wav2vec2:</span> facebook/wav2vec2-base · custom attention pooling head · layer probing (1–12) + attention vis · upper bound<br>
-        <span style="color:var(--noise)">★ Augmentation:</span> Gaussian (5/10/20 dB) + Background (10 dB) + Reverb (0.3/0.6s) · ΜΟΝΟ train set · audiomentations<br>
+        <span style="color:var(--noise)">★ Augmentation:</span> 5 conditions: Gaussian (5/10/20 dB) + Reverb (0.3/0.6s) · in-memory (no WAVs) · synthetic RIR · ΜΟΝΟ train set · 22.120 δείγματα<br>
         <span style="color:var(--eval)">★ Evaluation:</span> Clean + 7 noise conditions · UAR + W-F1 · robustness curves · augmentation impact analysis
     </div>
 
