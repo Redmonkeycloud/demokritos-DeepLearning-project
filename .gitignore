@@ -1,19 +1,20 @@
 # Datasets (too large for git)
 datasets/*
 !datasets/README.md
+
 # Data
 data/*
 __pycache__/
-# Generated spectrograms + augmented CSVs (share via Google Drive)
+
+# Generated spectrograms + augmented CSVs
 workflows/iemocap_dl/spectrograms/
 workflows/iemocap_dl/features/splits/80_20/train_augmented_features.csv
 workflows/iemocap_dl/features/splits/80_20/train_augmented_manifest.csv
+workflows/iemocap_dl/features/splits/loso/train_augmented_features.csv
+workflows/iemocap_dl/features/splits/loso/train_augmented_manifest.csv
+
 # Model checkpoints (large binaries)
 workflows/iemocap_dl/models/**/*.pt
-# Workflow outputs (per-workflow processed/models/results)
-workflows/iemocap_80_20/results/create_metrics_graphs.py
-workflows/iemocap_loso/results/create_metrics_graphs.py
-workflows/iemocap_pca/results/create_metrics_graphs.py
+
 # HTML presentation files
 slide_*.html
-html slides/compose_slides.py
