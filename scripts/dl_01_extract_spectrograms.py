@@ -1,15 +1,18 @@
 """
 Step 1B: Mel-Spectrogram extraction for CNN / CNN-LSTM training.
 
-Reads train.csv + test.csv, loads each WAV via librosa, computes a
-log-mel spectrogram, pads/truncates to exactly 300 frames, and saves
-each sample as a .npy file of shape (1, 128, 300).
+Reads train.csv + eval.csv (or test.csv for the legacy 80_20 split), loads
+each WAV via librosa, computes a log-mel spectrogram, pads/truncates to
+exactly 300 frames, and saves each sample as a .npy file of shape (1, 128, 300).
 
-Outputs:
+Outputs (default: loso split):
   workflows/iemocap_dl/spectrograms/train/<name>.npy
-  workflows/iemocap_dl/spectrograms/test/<name>.npy
-  workflows/iemocap_dl/features/splits/80_20/train_manifest.csv
-  workflows/iemocap_dl/features/splits/80_20/test_manifest.csv
+  workflows/iemocap_dl/spectrograms/eval/<name>.npy
+  workflows/iemocap_dl/features/splits/loso/train_manifest.csv
+  workflows/iemocap_dl/features/splits/loso/eval_manifest.csv
+
+Use --split-dir 80_20 to target the legacy random split (reads test.csv,
+writes to spectrograms/test/ and splits/80_20/test_manifest.csv).
 """
 
 import argparse
@@ -22,11 +25,8 @@ from tqdm import tqdm
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-ROOT       = Path(__file__).resolve().parent.parent
-DL_ROOT    = ROOT / "workflows" / "iemocap_dl"
-SPLITS_DIR = DL_ROOT / "features" / "splits" / "80_20"
-SPEC_TRAIN = DL_ROOT / "spectrograms" / "train"
-SPEC_TEST  = DL_ROOT / "spectrograms" / "test"
+ROOT    = Path(__file__).resolve().parent.parent
+DL_ROOT = ROOT / "workflows" / "iemocap_dl"
 
 # Default: where the WAV files live on the original dev machine.
 # Override with --dataset-root if your path is different.
@@ -115,27 +115,55 @@ def main():
         default=DEFAULT_DATASET_ROOT,
         help="Root folder that contains datasets/iemocap/Session* (default: %(default)s)",
     )
+    parser.add_argument(
+        "--split-dir",
+        default="loso",
+        help="Subfolder under features/splits/ to read CSVs from and write manifests to "
+             "(default: loso). Use '80_20' for the legacy random split.",
+    )
     args = parser.parse_args()
     dataset_root = Path(args.dataset_root)
 
+    splits_dir = DL_ROOT / "features" / "splits" / args.split_dir
+
+    # For the loso split the held-out set is called 'eval'; legacy split uses 'test'.
+    if args.split_dir == "80_20":
+        eval_csv_name     = "test.csv"
+        eval_manifest_name = "test_manifest.csv"
+        spec_eval_dir     = DL_ROOT / "spectrograms" / "test"
+    else:
+        eval_csv_name     = "eval.csv"
+        eval_manifest_name = "eval_manifest.csv"
+        spec_eval_dir     = DL_ROOT / "spectrograms" / "eval"
+
+    spec_eval_dir.mkdir(parents=True, exist_ok=True)
+    (DL_ROOT / "spectrograms" / "train").mkdir(parents=True, exist_ok=True)
+
     print("=== Step 1B: Mel-Spectrogram Extraction ===\n")
+    print(f"  Split dir    : {splits_dir}")
     print(f"  Dataset root : {dataset_root}\n")
 
     train_manifest = process_split(
-        SPLITS_DIR / "train.csv", SPEC_TRAIN, "train", dataset_root
+        splits_dir / "train.csv",
+        DL_ROOT / "spectrograms" / "train",
+        "train",
+        dataset_root,
     )
-    test_manifest = process_split(
-        SPLITS_DIR / "test.csv", SPEC_TEST, "test", dataset_root
+    eval_manifest = process_split(
+        splits_dir / eval_csv_name,
+        spec_eval_dir,
+        eval_csv_name.replace(".csv", ""),
+        dataset_root,
     )
 
-    train_manifest.to_csv(SPLITS_DIR / "train_manifest.csv", index=False)
-    test_manifest.to_csv(SPLITS_DIR / "test_manifest.csv", index=False)
+    train_manifest.to_csv(splits_dir / "train_manifest.csv", index=False)
+    eval_manifest.to_csv(splits_dir / eval_manifest_name, index=False)
 
     print(f"\nDone.")
-    print(f"  Train spectrograms : {len(train_manifest)} / 4424")
-    print(f"  Test  spectrograms : {len(test_manifest)} / 1107")
+    print(f"  Train spectrograms : {len(train_manifest)}")
+    print(f"  Eval  spectrograms : {len(eval_manifest)}")
     print(f"  Saved to           : {DL_ROOT / 'spectrograms'}")
-    print(f"  Manifests          : {SPLITS_DIR}")
+    print(f"  Manifests          : {splits_dir}")
 
     # Sanity check: load one file and verify shape
     if len(train_manifest) > 0:

@@ -1,8 +1,15 @@
 """
 Step 3: MLP training on 272D hand-crafted features.
 6 configs trained sequentially. Results saved per config + summary CSV.
+
+By default reads from splits/loso/ (speaker-independent eval set).
+Pass --split-dir 80_20 to use the legacy random split.
+
+Validation split (10%, stratified) is carved from the TRAIN set only —
+the eval/test set is the held-out speaker and is never used during training.
 """
 
+import argparse
 import json
 import sys
 import joblib
@@ -22,10 +29,9 @@ import seaborn as sns
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-ROOT       = Path(__file__).resolve().parent.parent
-DL_ROOT    = ROOT / "workflows" / "iemocap_dl"
-SPLITS_DIR = DL_ROOT / "features" / "splits" / "80_20"
-MODEL_DIR  = DL_ROOT / "models" / "mlp"
+ROOT      = Path(__file__).resolve().parent.parent
+DL_ROOT   = ROOT / "workflows" / "iemocap_dl"
+MODEL_DIR = DL_ROOT / "models" / "mlp"
 RESULT_DIR = DL_ROOT / "results" / "mlp"
 
 # ---------------------------------------------------------------------------
@@ -33,7 +39,7 @@ RESULT_DIR = DL_ROOT / "results" / "mlp"
 # ---------------------------------------------------------------------------
 LABEL2IDX  = {"angry": 0, "happy": 1, "neutral": 2, "sad": 3}
 IDX2LABEL  = {v: k for k, v in LABEL2IDX.items()}
-NON_FEAT   = {"label", "file_path", "dataset", "condition"}
+NON_FEAT   = {"label", "file_path", "dataset", "condition", "speaker_id"}
 
 BATCH_SIZE = 64
 MAX_EPOCHS = 100
@@ -78,7 +84,7 @@ class MLP(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Data loading
+# Data loading  (splits_dir injected at call time via global SPLITS_DIR)
 # ---------------------------------------------------------------------------
 def load_split(cfg: dict):
     df_train = pd.read_csv(SPLITS_DIR / "train.csv")
@@ -102,14 +108,17 @@ def load_split(cfg: dict):
     else:
         X_all, y_all = X_clean, y_clean
 
-    df_test  = pd.read_csv(SPLITS_DIR / "test.csv")
-    X_test   = df_test[feat_cols].values.astype(np.float32)
-    y_test   = df_test["label"].map(LABEL2IDX).values
+    # Eval set: held-out speaker (loso) or random 20% (80_20)
+    eval_csv = "eval.csv" if (SPLITS_DIR / "eval.csv").exists() else "test.csv"
+    df_eval  = pd.read_csv(SPLITS_DIR / eval_csv)
+    X_eval   = df_eval[feat_cols].values.astype(np.float32)
+    y_eval   = df_eval["label"].map(LABEL2IDX).values
 
+    # Validation split carved from TRAIN only — eval speaker never seen here
     X_tr, X_val, y_tr, y_val = train_test_split(
         X_all, y_all, test_size=VAL_FRAC, stratify=y_all, random_state=SEED
     )
-    return X_tr, y_tr, X_val, y_val, X_test, y_test, feat_cols
+    return X_tr, y_tr, X_val, y_val, X_eval, y_eval, feat_cols
 
 
 # ---------------------------------------------------------------------------
@@ -166,8 +175,8 @@ def train_config(name: str, cfg: dict, device: torch.device) -> dict:
           f"dropout={cfg['dropout']}  lr={cfg['lr']}  aug={cfg['augmented']}")
     print(f"{'='*55}")
 
-    X_tr, y_tr, X_val, y_val, X_test, y_test, feat_cols = load_split(cfg)
-    print(f"  Train={len(X_tr)}  Val={len(X_val)}  Test={len(X_test)}  Features={len(feat_cols)}")
+    X_tr, y_tr, X_val, y_val, X_eval, y_eval, feat_cols = load_split(cfg)
+    print(f"  Train={len(X_tr)}  Val={len(X_val)}  Eval={len(X_eval)}  Features={len(feat_cols)}")
 
     model     = MLP(len(feat_cols), cfg["hidden"], cfg["n_layers"], cfg["dropout"]).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"])
@@ -228,14 +237,14 @@ def train_config(name: str, cfg: dict, device: torch.device) -> dict:
             print(f"  Early stopping at epoch {epoch + 1}")
             break
 
-    # --- test evaluation ---
+    # --- eval set evaluation (held-out speaker / test set) ---
     model.load_state_dict(best_state)
     torch.save(best_state, MODEL_DIR / f"{name}_best.pt")
 
     model.eval()
     preds, trues = [], []
     with torch.no_grad():
-        for Xb, yb in make_loader(X_test, y_test, shuffle=False):
+        for Xb, yb in make_loader(X_eval, y_eval, shuffle=False):
             preds.extend(model(Xb.to(device)).argmax(1).cpu().tolist())
             trues.extend(yb.tolist())
 
@@ -248,7 +257,7 @@ def train_config(name: str, cfg: dict, device: torch.device) -> dict:
     metrics["lr"]             = cfg["lr"]
     metrics["augmented"]      = cfg["augmented"]
 
-    print(f"\n  TEST  accuracy={metrics['accuracy']:.4f}  "
+    print(f"\n  EVAL  accuracy={metrics['accuracy']:.4f}  "
           f"w-f1={metrics['weighted_f1']:.4f}  "
           f"macro-f1={metrics['macro_f1']:.4f}  "
           f"UAR={metrics['uar']:.4f}")
@@ -266,11 +275,24 @@ def train_config(name: str, cfg: dict, device: torch.device) -> dict:
 # Main
 # ---------------------------------------------------------------------------
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--split-dir",
+        default="loso",
+        help="Subfolder under features/splits/ to read train.csv / eval.csv from "
+             "(default: loso). Use '80_20' for the legacy random split.",
+    )
+    args = parser.parse_args()
+
+    global SPLITS_DIR
+    SPLITS_DIR = DL_ROOT / "features" / "splits" / args.split_dir
+
     torch.manual_seed(SEED)
     np.random.seed(SEED)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device : {device}")
+    print(f"Device     : {device}")
+    print(f"Split dir  : {SPLITS_DIR}\n")
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     RESULT_DIR.mkdir(parents=True, exist_ok=True)

@@ -3,8 +3,15 @@ Step 5: CNN-LSTM training on Mel-Spectrograms (1, 128, 300).
 CNN extracts local features, BiLSTM models temporal evolution,
 attention pooling aggregates over time steps.
 6 configs trained sequentially. Results saved per config + summary CSV.
+
+By default reads from splits/loso/ (speaker-independent eval set).
+Pass --split-dir 80_20 to use the legacy random split.
+
+Validation split (10%, stratified) is carved from the TRAIN set only —
+the eval/test set is the held-out speaker and is never used during training.
 """
 
+import argparse
 import json
 import sys
 import numpy as np
@@ -23,10 +30,9 @@ import seaborn as sns
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-ROOT       = Path(__file__).resolve().parent.parent
-DL_ROOT    = ROOT / "workflows" / "iemocap_dl"
-SPLITS_DIR = DL_ROOT / "features" / "splits" / "80_20"
-MODEL_DIR  = DL_ROOT / "models" / "cnn_lstm"
+ROOT      = Path(__file__).resolve().parent.parent
+DL_ROOT   = ROOT / "workflows" / "iemocap_dl"
+MODEL_DIR = DL_ROOT / "models" / "cnn_lstm"
 RESULT_DIR = DL_ROOT / "results" / "cnn_lstm"
 
 # ---------------------------------------------------------------------------
@@ -137,7 +143,7 @@ class CNNLSTM(nn.Module):
 
 
 # ---------------------------------------------------------------------------
-# Data loading
+# Data loading  (SPLITS_DIR injected at runtime via main())
 # ---------------------------------------------------------------------------
 def load_split(cfg: dict):
     df_train = pd.read_csv(SPLITS_DIR / "train_manifest.csv")
@@ -150,8 +156,12 @@ def load_split(cfg: dict):
         df_aug   = pd.read_csv(aug_path)[["npy_path", "label"]]
         df_train = pd.concat([df_train[["npy_path", "label"]], df_aug], ignore_index=True)
 
-    df_test = pd.read_csv(SPLITS_DIR / "test_manifest.csv")
+    # Eval set: held-out speaker manifest (loso) or random 20% manifest (80_20)
+    eval_manifest = "eval_manifest.csv" \
+        if (SPLITS_DIR / "eval_manifest.csv").exists() else "test_manifest.csv"
+    df_eval = pd.read_csv(SPLITS_DIR / eval_manifest)
 
+    # Validation split carved from TRAIN only — eval speaker never seen here
     labels_all = df_train["label"].map(LABEL2IDX).values
     idx        = np.arange(len(df_train))
     idx_tr, idx_val = train_test_split(
@@ -160,7 +170,7 @@ def load_split(cfg: dict):
 
     return (df_train.iloc[idx_tr].reset_index(drop=True),
             df_train.iloc[idx_val].reset_index(drop=True),
-            df_test)
+            df_eval)
 
 
 def make_loader(df: pd.DataFrame, shuffle: bool = True) -> DataLoader:
@@ -217,8 +227,8 @@ def train_config(name: str, cfg: dict, device: torch.device) -> dict:
           f"bi={cfg['bidirectional']}  aug={cfg['augmented']}")
     print(f"{'='*60}")
 
-    df_tr, df_val, df_test = load_split(cfg)
-    print(f"  Train={len(df_tr)}  Val={len(df_val)}  Test={len(df_test)}")
+    df_tr, df_val, df_eval = load_split(cfg)
+    print(f"  Train={len(df_tr)}  Val={len(df_val)}  Eval={len(df_eval)}")
 
     model_kwargs = {k: cfg[k] for k in
                     ["cnn_blocks", "lstm_hidden", "lstm_layers", "bidirectional", "dropout"]}
@@ -229,7 +239,7 @@ def train_config(name: str, cfg: dict, device: torch.device) -> dict:
 
     tr_loader   = make_loader(df_tr,   shuffle=True)
     val_loader  = make_loader(df_val,  shuffle=False)
-    test_loader = make_loader(df_test, shuffle=False)
+    eval_loader = make_loader(df_eval, shuffle=False)
 
     history          = {"train_loss": [], "val_loss": [], "val_f1": []}
     best_val_f1      = -1.0
@@ -286,7 +296,7 @@ def train_config(name: str, cfg: dict, device: torch.device) -> dict:
     model.eval()
     preds, trues = [], []
     with torch.no_grad():
-        for Xb, yb in test_loader:
+        for Xb, yb in eval_loader:
             preds.extend(model(Xb.to(device)).argmax(1).cpu().tolist())
             trues.extend(yb.tolist())
 
@@ -301,7 +311,7 @@ def train_config(name: str, cfg: dict, device: torch.device) -> dict:
     metrics["lr"]             = cfg["lr"]
     metrics["augmented"]      = cfg["augmented"]
 
-    print(f"\n  TEST  accuracy={metrics['accuracy']:.4f}  "
+    print(f"\n  EVAL  accuracy={metrics['accuracy']:.4f}  "
           f"w-f1={metrics['weighted_f1']:.4f}  "
           f"macro-f1={metrics['macro_f1']:.4f}  "
           f"UAR={metrics['uar']:.4f}")
@@ -319,11 +329,24 @@ def train_config(name: str, cfg: dict, device: torch.device) -> dict:
 # Main
 # ---------------------------------------------------------------------------
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--split-dir",
+        default="loso",
+        help="Subfolder under features/splits/ to read manifests from "
+             "(default: loso). Use '80_20' for the legacy random split.",
+    )
+    args = parser.parse_args()
+
+    global SPLITS_DIR
+    SPLITS_DIR = DL_ROOT / "features" / "splits" / args.split_dir
+
     torch.manual_seed(SEED)
     np.random.seed(SEED)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device : {device}")
+    print(f"Device     : {device}")
+    print(f"Split dir  : {SPLITS_DIR}\n")
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     RESULT_DIR.mkdir(parents=True, exist_ok=True)

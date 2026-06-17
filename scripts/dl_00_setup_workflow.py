@@ -16,8 +16,10 @@ DL_ROOT = ROOT / "workflows" / "iemocap_dl"
 
 DIRS = [
     DL_ROOT / "features" / "splits" / "80_20",
+    DL_ROOT / "features" / "splits" / "loso",
     DL_ROOT / "spectrograms" / "train",
     DL_ROOT / "spectrograms" / "test",
+    DL_ROOT / "spectrograms" / "eval",
     DL_ROOT / "models" / "mlp",
     DL_ROOT / "models" / "cnn",
     DL_ROOT / "models" / "cnn_lstm",

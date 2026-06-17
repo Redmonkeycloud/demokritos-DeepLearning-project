@@ -1,8 +1,21 @@
 """
 Step 4: CNN training on Mel-Spectrograms (1, 128, 300).
-6 configs trained sequentially. Results saved per config + summary CSV.
+10 configs trained sequentially. Results saved per config + summary CSV.
+
+By default reads from splits/loso/ (speaker-independent eval set).
+Pass --split-dir 80_20 to use the legacy random split.
+
+Validation split (10%, stratified) is carved from the TRAIN set only —
+the eval/test set is the held-out speaker and is never used during training.
+
+CNN-1  to CNN-6 : baseline sweep (filters, dropout, lr, augmentation)
+CNN-7  : True Global Average Pooling (mean over spatial dims instead of AdaptiveAvgPool)
+CNN-8  : Residual (skip) connections in every conv block
+CNN-9  : Frequency-aware pooling — collapse time only, keep 4 frequency bins
+CNN-10 : Deeper classifier head (128→512→256→4)
 """
 
+import argparse
 import json
 import sys
 import numpy as np
@@ -21,10 +34,9 @@ import seaborn as sns
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-ROOT       = Path(__file__).resolve().parent.parent
-DL_ROOT    = ROOT / "workflows" / "iemocap_dl"
-SPLITS_DIR = DL_ROOT / "features" / "splits" / "80_20"
-MODEL_DIR  = DL_ROOT / "models" / "cnn"
+ROOT      = Path(__file__).resolve().parent.parent
+DL_ROOT   = ROOT / "workflows" / "iemocap_dl"
+MODEL_DIR = DL_ROOT / "models" / "cnn"
 RESULT_DIR = DL_ROOT / "results" / "cnn"
 
 # ---------------------------------------------------------------------------
@@ -40,15 +52,26 @@ VAL_FRAC   = 0.10
 SEED       = 42
 
 # ---------------------------------------------------------------------------
-# Hyperparameter grid (from PLAN.md)
+# Hyperparameter grid
 # ---------------------------------------------------------------------------
+# model_type key selects the architecture variant (defaults to "standard"):
+#   standard   — original CNN (AdaptiveAvgPool + single Linear head)
+#   gap        — true Global Average Pooling via mean() over spatial dims
+#   residual   — skip connections in each conv block (1×1 projection shortcut)
+#   freq_aware — pool only over time, keep 4 frequency bins → 128*4 features
+#   deep_head  — wider two-layer classifier head (128→512→256→4)
 CONFIGS = {
-    "cnn_1": dict(filters=[32, 64],          dropout=0.3, lr=1e-3, augmented=False),  # baseline
-    "cnn_2": dict(filters=[32, 64, 128],     dropout=0.3, lr=1e-3, augmented=False),  # +depth
-    "cnn_3": dict(filters=[64, 128, 256],    dropout=0.3, lr=1e-3, augmented=False),  # +width
-    "cnn_4": dict(filters=[32, 64, 128],     dropout=0.5, lr=1e-3, augmented=False),  # +dropout
-    "cnn_5": dict(filters=[32, 64, 128, 256],dropout=0.3, lr=5e-4, augmented=False),  # deeper+slowLR
-    "cnn_6": dict(filters=[32, 64, 128],     dropout=0.3, lr=1e-3, augmented=True),   # CNN-2 + aug
+    "cnn_1":  dict(filters=[32, 64],           dropout=0.3, lr=1e-3, augmented=False, model_type="standard"),
+    "cnn_2":  dict(filters=[32, 64, 128],      dropout=0.3, lr=1e-3, augmented=False, model_type="standard"),
+    "cnn_3":  dict(filters=[64, 128, 256],     dropout=0.3, lr=1e-3, augmented=False, model_type="standard"),
+    "cnn_4":  dict(filters=[32, 64, 128],      dropout=0.5, lr=1e-3, augmented=False, model_type="standard"),
+    "cnn_5":  dict(filters=[32, 64, 128, 256], dropout=0.3, lr=5e-4, augmented=False, model_type="standard"),
+    "cnn_6":  dict(filters=[32, 64, 128],      dropout=0.3, lr=1e-3, augmented=True,  model_type="standard"),
+    # --- neighbourhood experiments around CNN-6 ---
+    "cnn_7":  dict(filters=[32, 64, 128],      dropout=0.3, lr=1e-3, augmented=True,  model_type="gap"),
+    "cnn_8":  dict(filters=[32, 64, 128],      dropout=0.3, lr=1e-3, augmented=True,  model_type="residual"),
+    "cnn_9":  dict(filters=[32, 64, 128],      dropout=0.3, lr=1e-3, augmented=True,  model_type="freq_aware"),
+    "cnn_10": dict(filters=[32, 64, 128],      dropout=0.3, lr=1e-3, augmented=True,  model_type="deep_head"),
 }
 
 
@@ -69,20 +92,89 @@ class SpectrogramDataset(Dataset):
 
 
 # ---------------------------------------------------------------------------
-# Model
+# Model variants
 # ---------------------------------------------------------------------------
+def _conv_blocks(filters: list) -> nn.Sequential:
+    """Build the shared stack of Conv→BN→ReLU→MaxPool blocks."""
+    layers, in_ch = [], 1
+    for out_ch in filters:
+        layers += [
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+        ]
+        in_ch = out_ch
+    return nn.Sequential(*layers)
+
+
 class CNN(nn.Module):
+    """CNN-1 … CNN-6: AdaptiveAvgPool(1,1) + single Linear head."""
+
     def __init__(self, filters: list, dropout: float, n_classes: int = 4):
         super().__init__()
-        blocks = []
-        in_ch  = 1
+        self.cnn        = _conv_blocks(filters)
+        self.pool       = nn.AdaptiveAvgPool2d((1, 1))
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(filters[-1], 256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(256, n_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.classifier(self.pool(self.cnn(x)))
+
+
+class GlobalAvgPoolCNN(nn.Module):
+    """CNN-7: true Global Average Pooling via mean() over spatial dims."""
+
+    def __init__(self, filters: list, dropout: float, n_classes: int = 4):
+        super().__init__()
+        self.cnn        = _conv_blocks(filters)
+        self.classifier = nn.Sequential(
+            nn.Linear(filters[-1], 256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(256, n_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.cnn(x)
+        x = x.mean(dim=[2, 3])      # (B, C) — average over H and W
+        return self.classifier(x)
+
+
+class _ResBlock(nn.Module):
+    """Single residual block: Conv→BN→ReLU→MaxPool with 1×1 projection shortcut."""
+
+    def __init__(self, in_ch: int, out_ch: int):
+        super().__init__()
+        self.main = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+        )
+        # Projection shortcut matches channels and halves spatial dims to align with main path.
+        self.shortcut = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel_size=1, bias=False),
+            nn.MaxPool2d(2, 2),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.main(x) + self.shortcut(x)
+
+
+class ResidualCNN(nn.Module):
+    """CNN-8: residual (skip) connections in each conv block."""
+
+    def __init__(self, filters: list, dropout: float, n_classes: int = 4):
+        super().__init__()
+        blocks, in_ch = [], 1
         for out_ch in filters:
-            blocks += [
-                nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
-                nn.BatchNorm2d(out_ch),
-                nn.ReLU(),
-                nn.MaxPool2d(2, 2),
-            ]
+            blocks.append(_ResBlock(in_ch, out_ch))
             in_ch = out_ch
         self.cnn        = nn.Sequential(*blocks)
         self.pool       = nn.AdaptiveAvgPool2d((1, 1))
@@ -98,8 +190,70 @@ class CNN(nn.Module):
         return self.classifier(self.pool(self.cnn(x)))
 
 
+class FreqAwareCNN(nn.Module):
+    """CNN-9: pool only over the time axis, preserve 4 frequency bins."""
+
+    FREQ_BINS = 4
+
+    def __init__(self, filters: list, dropout: float, n_classes: int = 4):
+        super().__init__()
+        self.cnn        = _conv_blocks(filters)
+        self.pool       = nn.AdaptiveAvgPool2d((self.FREQ_BINS, 1))
+        feature_dim     = filters[-1] * self.FREQ_BINS
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(feature_dim, 256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(256, n_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.classifier(self.pool(self.cnn(x)))
+
+
+class DeepHeadCNN(nn.Module):
+    """CNN-10: deeper classifier head (128→512→256→4)."""
+
+    def __init__(self, filters: list, dropout: float, n_classes: int = 4):
+        super().__init__()
+        self.cnn        = _conv_blocks(filters)
+        self.pool       = nn.AdaptiveAvgPool2d((1, 1))
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(filters[-1], 512),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(256, n_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.classifier(self.pool(self.cnn(x)))
+
+
+_MODEL_REGISTRY = {
+    "standard":  CNN,
+    "gap":        GlobalAvgPoolCNN,
+    "residual":   ResidualCNN,
+    "freq_aware": FreqAwareCNN,
+    "deep_head":  DeepHeadCNN,
+}
+
+
+def build_model(cfg: dict) -> nn.Module:
+    model_type = cfg.get("model_type", "standard")
+    cls = _MODEL_REGISTRY.get(model_type)
+    if cls is None:
+        raise ValueError(f"Unknown model_type '{model_type}'. "
+                         f"Valid: {list(_MODEL_REGISTRY)}")
+    return cls(cfg["filters"], cfg["dropout"])
+
+
 # ---------------------------------------------------------------------------
-# Data loading
+# Data loading  (SPLITS_DIR injected at runtime via main())
 # ---------------------------------------------------------------------------
 def load_split(cfg: dict):
     df_train = pd.read_csv(SPLITS_DIR / "train_manifest.csv")
@@ -112,8 +266,12 @@ def load_split(cfg: dict):
         df_aug   = pd.read_csv(aug_path)[["npy_path", "label"]]
         df_train = pd.concat([df_train[["npy_path", "label"]], df_aug], ignore_index=True)
 
-    df_test = pd.read_csv(SPLITS_DIR / "test_manifest.csv")
+    # Eval set: held-out speaker manifest (loso) or random 20% manifest (80_20)
+    eval_manifest = "eval_manifest.csv" \
+        if (SPLITS_DIR / "eval_manifest.csv").exists() else "test_manifest.csv"
+    df_eval = pd.read_csv(SPLITS_DIR / eval_manifest)
 
+    # Validation split carved from TRAIN only — eval speaker never seen here
     labels_all = df_train["label"].map(LABEL2IDX).values
     idx        = np.arange(len(df_train))
     idx_tr, idx_val = train_test_split(
@@ -123,7 +281,7 @@ def load_split(cfg: dict):
     df_tr  = df_train.iloc[idx_tr].reset_index(drop=True)
     df_val = df_train.iloc[idx_val].reset_index(drop=True)
 
-    return df_tr, df_val, df_test
+    return df_tr, df_val, df_eval
 
 
 def make_loader(df: pd.DataFrame, shuffle: bool = True) -> DataLoader:
@@ -177,22 +335,23 @@ def save_history(history: dict, name: str):
 # Training loop for one config
 # ---------------------------------------------------------------------------
 def train_config(name: str, cfg: dict, device: torch.device) -> dict:
-    print(f"\n{'='*55}")
-    print(f"  {name.upper()}  |  filters={cfg['filters']}  "
+    model_type = cfg.get("model_type", "standard")
+    print(f"\n{'='*60}")
+    print(f"  {name.upper()}  |  type={model_type}  filters={cfg['filters']}  "
           f"dropout={cfg['dropout']}  lr={cfg['lr']}  aug={cfg['augmented']}")
-    print(f"{'='*55}")
+    print(f"{'='*60}")
 
-    df_tr, df_val, df_test = load_split(cfg)
-    print(f"  Train={len(df_tr)}  Val={len(df_val)}  Test={len(df_test)}")
+    df_tr, df_val, df_eval = load_split(cfg)
+    print(f"  Train={len(df_tr)}  Val={len(df_val)}  Eval={len(df_eval)}")
 
-    model     = CNN(cfg["filters"], cfg["dropout"]).to(device)
+    model = build_model(cfg).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"])
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
     criterion = nn.CrossEntropyLoss()
 
-    tr_loader  = make_loader(df_tr,   shuffle=True)
-    val_loader = make_loader(df_val,  shuffle=False)
-    test_loader= make_loader(df_test, shuffle=False)
+    tr_loader   = make_loader(df_tr,   shuffle=True)
+    val_loader  = make_loader(df_val,  shuffle=False)
+    eval_loader = make_loader(df_eval, shuffle=False)
 
     history          = {"train_loss": [], "val_loss": [], "val_f1": []}
     best_val_f1      = -1.0
@@ -245,26 +404,27 @@ def train_config(name: str, cfg: dict, device: torch.device) -> dict:
             print(f"  Early stopping at epoch {epoch + 1}")
             break
 
-    # --- test evaluation ---
+    # --- eval set evaluation (held-out speaker / test set) ---
     model.load_state_dict(best_state)
     torch.save(best_state, MODEL_DIR / f"{name}_best.pt")
 
     model.eval()
     preds, trues = [], []
     with torch.no_grad():
-        for Xb, yb in test_loader:
+        for Xb, yb in eval_loader:
             preds.extend(model(Xb.to(device)).argmax(1).cpu().tolist())
             trues.extend(yb.tolist())
 
     metrics = compute_metrics(trues, preds)
     metrics["best_val_f1"]    = float(best_val_f1)
     metrics["epochs_trained"] = len(history["train_loss"])
+    metrics["model_type"]     = cfg.get("model_type", "standard")
     metrics["filters"]        = cfg["filters"]
     metrics["dropout"]        = cfg["dropout"]
     metrics["lr"]             = cfg["lr"]
     metrics["augmented"]      = cfg["augmented"]
 
-    print(f"\n  TEST  accuracy={metrics['accuracy']:.4f}  "
+    print(f"\n  EVAL  accuracy={metrics['accuracy']:.4f}  "
           f"w-f1={metrics['weighted_f1']:.4f}  "
           f"macro-f1={metrics['macro_f1']:.4f}  "
           f"UAR={metrics['uar']:.4f}")
@@ -282,11 +442,24 @@ def train_config(name: str, cfg: dict, device: torch.device) -> dict:
 # Main
 # ---------------------------------------------------------------------------
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--split-dir",
+        default="loso",
+        help="Subfolder under features/splits/ to read manifests from "
+             "(default: loso). Use '80_20' for the legacy random split.",
+    )
+    args = parser.parse_args()
+
+    global SPLITS_DIR
+    SPLITS_DIR = DL_ROOT / "features" / "splits" / args.split_dir
+
     torch.manual_seed(SEED)
     np.random.seed(SEED)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device : {device}")
+    print(f"Device     : {device}")
+    print(f"Split dir  : {SPLITS_DIR}\n")
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     RESULT_DIR.mkdir(parents=True, exist_ok=True)
@@ -297,14 +470,18 @@ def main():
         summary.append({"config": name, **metrics})
 
     df_summary = pd.DataFrame(summary)
-    df_summary.to_csv(RESULT_DIR / "cnn_summary.csv", index=False)
+    df_summary_sorted = df_summary.sort_values("uar", ascending=False).reset_index(drop=True)
+    df_summary_sorted.to_csv(RESULT_DIR / "cnn_summary.csv", index=False)
 
-    print("\n" + "=" * 55)
-    print("CNN SUMMARY")
-    print("=" * 55)
-    cols = ["config", "accuracy", "weighted_f1", "macro_f1", "uar", "epochs_trained"]
-    print(df_summary[cols].to_string(index=False))
-    print(f"\nBest config by UAR: {df_summary.loc[df_summary['uar'].idxmax(), 'config']}")
+    print("\n" + "=" * 70)
+    print("CNN SUMMARY  (sorted by UAR ↓)")
+    print("=" * 70)
+    cols = ["config", "model_type", "accuracy", "weighted_f1", "macro_f1", "uar",
+            "epochs_trained", "augmented"]
+    print(df_summary_sorted[cols].to_string(index=False))
+    best = df_summary_sorted.iloc[0]
+    print(f"\nBest config by UAR: {best['config']}  "
+          f"(type={best['model_type']}, UAR={best['uar']:.4f})")
 
 
 if __name__ == "__main__":

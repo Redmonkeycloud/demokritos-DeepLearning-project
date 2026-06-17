@@ -1,19 +1,21 @@
 """
 Step 2: Noise Augmentation — TRAIN SET ONLY.
 
-DATA LEAKAGE: test set is NEVER touched here.
+DATA LEAKAGE: eval/test set is NEVER touched here.
 
-5 noise conditions applied to all 4424 train samples:
+5 noise conditions applied to all train samples:
   gauss_20  Gaussian noise  SNR = 20 dB
   gauss_10  Gaussian noise  SNR = 10 dB
   gauss_5   Gaussian noise  SNR =  5 dB
   room_03   Reverberation   RT60 = 0.3 s
   room_06   Reverberation   RT60 = 0.6 s
 
-Produces (4424 x 5 = 22 120 augmented samples):
+Produces (N_train × 5 augmented samples):
   workflows/iemocap_dl/spectrograms/train_augmented/<stem>_<cond>.npy
-  workflows/iemocap_dl/features/splits/80_20/train_augmented_features.csv
-  workflows/iemocap_dl/features/splits/80_20/train_augmented_manifest.csv
+  workflows/iemocap_dl/features/splits/<split_dir>/train_augmented_features.csv
+  workflows/iemocap_dl/features/splits/<split_dir>/train_augmented_manifest.csv
+
+Default split dir: loso.  Use --split-dir 80_20 for the legacy random split.
 """
 
 import argparse
@@ -29,10 +31,9 @@ np.random.seed(42)
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-ROOT       = Path(__file__).resolve().parent.parent
-DL_ROOT    = ROOT / "workflows" / "iemocap_dl"
-SPLITS_DIR = DL_ROOT / "features" / "splits" / "80_20"
-SPEC_AUG   = DL_ROOT / "spectrograms" / "train_augmented"
+ROOT    = Path(__file__).resolve().parent.parent
+DL_ROOT = ROOT / "workflows" / "iemocap_dl"
+SPEC_AUG = DL_ROOT / "spectrograms" / "train_augmented"
 
 DEFAULT_DATASET_ROOT = r"D:\Users\User\Desktop\demokritos-ml-project"
 
@@ -134,12 +135,19 @@ def main():
         "--dataset-root", default=DEFAULT_DATASET_ROOT,
         help="Root containing datasets/iemocap/Session* (default: %(default)s)",
     )
-    args   = parser.parse_args()
+    parser.add_argument(
+        "--split-dir",
+        default="loso",
+        help="Subfolder under features/splits/ to read train.csv from and write "
+             "augmented CSVs to (default: loso). Use '80_20' for the legacy split.",
+    )
+    args = parser.parse_args()
     dataset_root = Path(args.dataset_root)
 
+    splits_dir = DL_ROOT / "features" / "splits" / args.split_dir
     SPEC_AUG.mkdir(parents=True, exist_ok=True)
 
-    train_csv = SPLITS_DIR / "train.csv"
+    train_csv = splits_dir / "train.csv"
     df        = pd.read_csv(train_csv)
 
     feature_records  = []
@@ -188,12 +196,12 @@ def main():
 
     # Save features CSV
     df_feat = pd.DataFrame(feature_records)
-    feat_out = SPLITS_DIR / "train_augmented_features.csv"
+    feat_out = splits_dir / "train_augmented_features.csv"
     df_feat.to_csv(feat_out, index=False)
 
     # Save manifest CSV
     df_manifest = pd.DataFrame(manifest_records)
-    manifest_out = SPLITS_DIR / "train_augmented_manifest.csv"
+    manifest_out = splits_dir / "train_augmented_manifest.csv"
     df_manifest.to_csv(manifest_out, index=False)
 
     print(f"\nDone.")

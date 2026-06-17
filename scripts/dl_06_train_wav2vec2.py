@@ -9,8 +9,14 @@ Training strategy (2 phases):
              transformer layers + feature_projection with layerwise LR decay
 
 Post-training analysis:
-  - Layer probing  : linear probe per layer (0β€“12) on test set -> UAR curve
+  - Layer probing  : linear probe per layer (0β€“12) on eval set -> UAR curve
   - Attention viz  : attention weight bar plots per emotion class
+
+By default reads from splits/loso/ (speaker-independent eval set).
+Pass --split-dir 80_20 to use the legacy random split.
+
+Validation split (10 pct, stratified) is carved from the TRAIN set only --
+the eval/test set is the held-out speaker and is never used during training.
 """
 
 import argparse
@@ -36,7 +42,8 @@ import seaborn as sns
 # ---------------------------------------------------------------------------
 ROOT       = Path(__file__).resolve().parent.parent
 DL_ROOT    = ROOT / "workflows" / "iemocap_dl"
-SPLITS_DIR = DL_ROOT / "features" / "splits" / "80_20"
+# SPLITS_DIR is set at runtime by main() via --split-dir
+SPLITS_DIR = DL_ROOT / "features" / "splits" / "loso"
 MODEL_DIR  = DL_ROOT / "models" / "wav2vec2"
 RESULT_DIR = DL_ROOT / "results" / "wav2vec2"
 
@@ -363,14 +370,24 @@ def save_history(history: dict):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset-root", default=DEFAULT_DATASET_ROOT)
+    parser.add_argument(
+        "--split-dir",
+        default="loso",
+        help="Subfolder under features/splits/ to read train.csv / eval.csv from "
+             "(default: loso). Use 80_20 for the legacy random split.",
+    )
     args = parser.parse_args()
     dataset_root = Path(args.dataset_root)
+
+    global SPLITS_DIR
+    SPLITS_DIR = DL_ROOT / "features" / "splits" / args.split_dir
 
     torch.manual_seed(SEED)
     np.random.seed(SEED)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device : {device}")
+    print(f"Device     : {device}")
+    print(f"Split dir  : {SPLITS_DIR}\n")
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     RESULT_DIR.mkdir(parents=True, exist_ok=True)
@@ -380,7 +397,8 @@ def main():
 
     # β”€β”€ Data splits β”€β”€
     df_train = pd.read_csv(SPLITS_DIR / "train.csv")
-    df_test  = pd.read_csv(SPLITS_DIR / "test.csv")
+    eval_csv = "eval.csv" if (SPLITS_DIR / "eval.csv").exists() else "test.csv"
+    df_eval  = pd.read_csv(SPLITS_DIR / eval_csv)
 
     labels_all = df_train["label"].map(LABEL2IDX).values
     idx        = np.arange(len(df_train))
@@ -390,11 +408,11 @@ def main():
     df_tr  = df_train.iloc[idx_tr].reset_index(drop=True)
     df_val = df_train.iloc[idx_val].reset_index(drop=True)
 
-    print(f"Train={len(df_tr)}  Val={len(df_val)}  Test={len(df_test)}")
+    print(f"Train={len(df_tr)}  Val={len(df_val)}  Eval={len(df_eval)}")
 
     tr_loader   = make_loader(df_tr,  extractor, dataset_root, shuffle=True)
     val_loader  = make_loader(df_val, extractor, dataset_root, shuffle=False)
-    test_loader = make_loader(df_test, extractor, dataset_root, shuffle=False)
+    eval_loader = make_loader(df_eval, extractor, dataset_root, shuffle=False)
 
     # β”€β”€ Model β”€β”€
     print(f"\nLoading {MODEL_NAME}...")
@@ -454,7 +472,7 @@ def main():
 
     # Save frozen-phase checkpoint for comparison
     torch.save(best_state, MODEL_DIR / "wav2vec2_frozen_best.pt")
-    frozen_metrics, _, frozen_preds = evaluate(model, test_loader, device)
+    frozen_metrics, _, frozen_preds = evaluate(model, eval_loader, device)
     print(f"\n  [Frozen] TEST UAR={frozen_metrics['uar']:.4f}  "
           f"Acc={frozen_metrics['accuracy']:.4f}")
 
@@ -519,7 +537,7 @@ def main():
     model.load_state_dict(best_state)
     torch.save(best_state, MODEL_DIR / "wav2vec2_finetuned_best.pt")
 
-    metrics, y_true, y_pred = evaluate(model, test_loader, device)
+    metrics, y_true, y_pred = evaluate(model, eval_loader, device)
     metrics["best_val_f1"]    = float(best_val_f1)
     metrics["epochs_trained"] = len(history["train_loss"])
     metrics["frozen_uar"]     = frozen_metrics["uar"]
@@ -543,8 +561,8 @@ def main():
 
     # β”€β”€ Post-training analysis β”€β”€
     tr_loader_noshuf = make_loader(df_tr, extractor, dataset_root, shuffle=False)
-    layer_probing(model, tr_loader_noshuf, test_loader, device)
-    visualize_attention(model, test_loader, device)
+    layer_probing(model, tr_loader_noshuf, eval_loader, device)
+    visualize_attention(model, eval_loader, device)
 
     print("\nDone. Results in:", RESULT_DIR)
 
