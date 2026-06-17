@@ -386,7 +386,7 @@ def main():
     np.random.seed(SEED)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device     : {device}")
+    print(f"Using device: {device} ({torch.cuda.get_device_name(0) if device.type == 'cuda' else 'CPU'})")
     print(f"Split dir  : {SPLITS_DIR}\n")
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
