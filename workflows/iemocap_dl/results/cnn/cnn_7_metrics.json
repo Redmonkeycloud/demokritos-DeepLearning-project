@@ -1,0 +1,17 @@
+{
+  "accuracy": 0.542713567839196,
+  "weighted_f1": 0.5450727984924936,
+  "macro_f1": 0.5515617289429744,
+  "uar": 0.5326238799380366,
+  "best_val_f1": 0.7500667490253583,
+  "epochs_trained": 100,
+  "model_type": "gap",
+  "filters": [
+    32,
+    64,
+    128
+  ],
+  "dropout": 0.3,
+  "lr": 0.001,
+  "augmented": true
+}
