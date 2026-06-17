@@ -474,7 +474,7 @@ def main():
     df_summary_sorted.to_csv(RESULT_DIR / "cnn_summary.csv", index=False)
 
     print("\n" + "=" * 70)
-    print("CNN SUMMARY  (sorted by UAR ↓)")
+    print("CNN SUMMARY  (sorted by UAR desc)")
     print("=" * 70)
     cols = ["config", "model_type", "accuracy", "weighted_f1", "macro_f1", "uar",
             "epochs_trained", "augmented"]
