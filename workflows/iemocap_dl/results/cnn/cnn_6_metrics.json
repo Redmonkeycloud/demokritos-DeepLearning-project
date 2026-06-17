@@ -1,0 +1,17 @@
+{
+  "accuracy": 0.5812395309882747,
+  "weighted_f1": 0.580827196709561,
+  "macro_f1": 0.5854337073666502,
+  "uar": 0.5766439414000807,
+  "best_val_f1": 0.620570966787015,
+  "epochs_trained": 44,
+  "model_type": "standard",
+  "filters": [
+    32,
+    64,
+    128
+  ],
+  "dropout": 0.3,
+  "lr": 0.001,
+  "augmented": true
+}
