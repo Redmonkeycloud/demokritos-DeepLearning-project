@@ -4,11 +4,11 @@ Step 7: Noise Robustness Evaluation with In-Memory Spectral-Subtraction Denoisin
 Evaluates the best checkpoint from each model family (MLP, CNN, CNN-LSTM, wav2vec2)
 under three conditions per noise type:
 
-  1. clean           — no modification, no denoising (baseline)
-  2. <cond>_noised   — noise added on-the-fly from raw WAV
-  3. <cond>_denoised — noise added, then spectral-subtraction denoiser applied
+  1. clean           -- no modification, no denoising (baseline)
+  2. <cond>_noised   -- noise added on-the-fly from raw WAV
+  3. <cond>_denoised -- noise added, then spectral-subtraction denoiser applied
 
-Pipeline:  clean_wav → add_noise → [denoise] → extract_features → model
+Pipeline:  clean_wav -> add_noise -> [denoise] -> extract_features -> model
 
 Noise conditions: gauss_20, gauss_10, gauss_5, gauss_0, room_03, room_06
 
@@ -18,10 +18,10 @@ Selection strategy:
   - Only the representative is then run on all noised / denoised conditions.
 
 Outputs  (results/noise_robustness/):
-  robustness_summary.csv  — one row per model family; clean + noised/denoised per condition
-  robustness_curves.png   — Gaussian + Reverb sub-plots; 3 lines per family (clean/noised/denoised)
-  denoising_gain.png      — bar chart: UAR gain (denoised − noised) per model per condition
-  robustness_heatmap.png  — 3-panel heatmap (Clean | Noised | Denoised)
+  robustness_summary.csv  -- one row per model family; clean + noised/denoised per condition
+  robustness_curves.png   -- Gaussian + Reverb sub-plots; 3 lines per family (clean/noised/denoised)
+  denoising_gain.png      -- bar chart: UAR gain (denoised − noised) per model per condition
+  robustness_heatmap.png  -- 3-panel heatmap (Clean | Noised | Denoised)
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ IDX2LABEL  = {v: k for k, v in LABEL2IDX.items()}
 NON_FEAT   = {"label", "file_path", "dataset", "condition", "speaker_id"}
 
 # ---------------------------------------------------------------------------
-# Audio constants — must match training scripts exactly
+# Audio constants -- must match training scripts exactly
 # ---------------------------------------------------------------------------
 SR          = 16_000
 N_MELS      = 128
@@ -74,11 +74,11 @@ N_FFT_SPEC  = 1024
 N_FRAMES    = 300        # 3 s at 10 ms / frame
 MAX_WAV2VEC = 8 * SR     # 8 s maximum for wav2vec2
 
-ST_WIN  = 0.050          # 50 ms  — pyAudioAnalysis window
+ST_WIN  = 0.050          # 50 ms  -- pyAudioAnalysis window
 ST_STEP = 0.025          # 25 ms
 
 # ---------------------------------------------------------------------------
-# Model configs — mirror the hyperparameter grids in training scripts
+# Model configs -- mirror the hyperparameter grids in training scripts
 # ---------------------------------------------------------------------------
 MLP_CONFIGS: dict[str, dict] = {
     "mlp_1": dict(n_layers=2, hidden=256, dropout=0.3),
@@ -191,7 +191,7 @@ def spectral_subtraction_denoise(
 # ============================================================================
 
 def wav_to_logmel(audio: np.ndarray) -> np.ndarray:
-    """Compute log-mel spectrogram from waveform → shape (1, 128, 300)."""
+    """Compute log-mel spectrogram from waveform -> shape (1, 128, 300)."""
     S    = librosa.feature.melspectrogram(
         y=audio, sr=SR, n_mels=N_MELS,
         hop_length=HOP_LENGTH, win_length=WIN_LENGTH, n_fft=N_FFT_SPEC,
@@ -459,7 +459,7 @@ def load_eval_waveforms(df_eval: pd.DataFrame, dataset_root: Path
                         ) -> tuple[list[np.ndarray], list[int], list[int]]:
     """
     Load raw WAVs for every row in df_eval.
-    Returns (wavs, labels, valid_row_indices) — rows where the WAV was found.
+    Returns (wavs, labels, valid_row_indices) -- rows where the WAV was found.
     """
     wavs:   list[np.ndarray] = []
     labels: list[int]        = []
@@ -477,7 +477,7 @@ def load_eval_waveforms(df_eval: pd.DataFrame, dataset_root: Path
         valid.append(idx)
 
     if missing:
-        print(f"  WARNING: {missing} WAV files not found — skipped.")
+        print(f"  WARNING: {missing} WAV files not found -- skipped.")
     print(f"  Loaded {len(wavs)} / {len(df_eval)} eval samples.")
     return wavs, labels, valid
 
@@ -543,7 +543,7 @@ def eval_condition(
     """
     Apply cond_fn (noise) and optionally denoise, then run model inference.
 
-    cond_fn=None → clean pass (no noise, no denoising).
+    cond_fn=None -> clean pass (no noise, no denoising).
     """
     np.random.seed(42)   # reproducible noise
 
@@ -584,8 +584,8 @@ def _find_best_mlp(
     model_dir = MODEL_ROOT / "mlp"
     best_name, best_uar, best_model, best_cfg = None, -1.0, None, None
 
-    # Pre-compute clean scaled features once — identical across configs.
-    print("    Pre-computing 272D features for clean eval …")
+    # Pre-compute clean scaled features once -- identical across configs.
+    print("    Pre-computing 272D features for clean eval ...")
     feats = np.stack([extract_272d(w) for w in tqdm(wavs, leave=False)])
     X_clean = scaler.transform(feats).astype(np.float32)
 
@@ -614,7 +614,7 @@ def _find_best_cnn(
     best_name, best_uar, best_model, best_cfg = None, -1.0, None, None
 
     # Pre-compute clean mel-spectrograms once.
-    print("    Pre-computing mel-spectrograms for clean eval …")
+    print("    Pre-computing mel-spectrograms for clean eval ...")
     specs_clean = [wav_to_logmel(w) for w in tqdm(wavs, leave=False)]
 
     for name, cfg in CNN_CONFIGS.items():
@@ -642,7 +642,7 @@ def _find_best_cnn_lstm(
     best_name, best_uar, best_model, best_cfg = None, -1.0, None, None
 
     # Reuse mel-spectrograms computed once (same params as CNN).
-    print("    Pre-computing mel-spectrograms for clean eval …")
+    print("    Pre-computing mel-spectrograms for clean eval ...")
     specs_clean = [wav_to_logmel(w) for w in tqdm(wavs, leave=False)]
 
     for name, cfg in CL_CONFIGS.items():
@@ -670,7 +670,7 @@ def _find_best_wav2vec2(
     try:
         from transformers import Wav2Vec2FeatureExtractor
     except ImportError:
-        print("  transformers not available — skipping wav2vec2.")
+        print("  transformers not available -- skipping wav2vec2.")
         return None, None, None
 
     model_dir  = MODEL_ROOT / "wav2vec2"
@@ -720,7 +720,7 @@ def eval_family(
     """
     results: dict = {}
 
-    print(f"  [{display_name}] clean …", end=" ", flush=True)
+    print(f"  [{display_name}] clean ...", end=" ", flush=True)
     results["clean"] = eval_condition(
         family, best_model, wavs, labels, device,
         cond_fn=None, denoise=False, scaler=scaler, extractor=extractor,
@@ -730,14 +730,14 @@ def eval_family(
     for cond_name, cond_fn in CONDITIONS.items():
         results[cond_name] = {}
 
-        print(f"  [{display_name}] {cond_name:10s} noised   …", end=" ", flush=True)
+        print(f"  [{display_name}] {cond_name:10s} noised   ...", end=" ", flush=True)
         results[cond_name]["noised"] = eval_condition(
             family, best_model, wavs, labels, device,
             cond_fn=cond_fn, denoise=False, scaler=scaler, extractor=extractor,
         )
         print(f"UAR={results[cond_name]['noised']['uar']:.4f}")
 
-        print(f"  [{display_name}] {cond_name:10s} denoised …", end=" ", flush=True)
+        print(f"  [{display_name}] {cond_name:10s} denoised ...", end=" ", flush=True)
         results[cond_name]["denoised"] = eval_condition(
             family, best_model, wavs, labels, device,
             cond_fn=cond_fn, denoise=True, scaler=scaler, extractor=extractor,
@@ -799,7 +799,7 @@ def plot_robustness_curves(all_results: dict[str, dict]) -> None:
     Two sub-plots: Gaussian SNR (left) and Reverberation (right).
     For each model family: clean (horizontal dotted), noised (solid), denoised (dashed).
     """
-    gauss_x      = [20, 10, 5, 0]      # SNR dB — severity increases left to right
+    gauss_x      = [20, 10, 5, 0]      # SNR dB -- severity increases left to right
     reverb_x     = [0.3, 0.6]          # RT60 s
 
     fig, (ax_g, ax_r) = plt.subplots(1, 2, figsize=(14, 5))
@@ -965,7 +965,7 @@ def plot_heatmap(all_results: dict[str, dict]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Step 7 — Noise robustness + denoising evaluation"
+        description="Step 7 -- Noise robustness + denoising evaluation"
     )
     parser.add_argument(
         "--dataset-root", default=DEFAULT_DATASET_ROOT,
@@ -999,7 +999,7 @@ def main() -> None:
     df_eval = pd.read_csv(splits_dir / "eval.csv")
     scaler  = joblib.load(splits_dir / "scaler.pkl")
 
-    print("Loading eval WAVs …")
+    print("Loading eval WAVs ...")
     wavs, labels, _ = load_eval_waveforms(df_eval, dataset_root)
     if not wavs:
         print("ERROR: No WAV files loaded. Check --dataset-root.")
@@ -1015,58 +1015,58 @@ def main() -> None:
     # MLP
     # ------------------------------------------------------------------
     print("=" * 55)
-    print("  MLP — finding best config …")
+    print("  MLP -- finding best config ...")
     best_name, best_cfg, best_model = _find_best_mlp(
         wavs, labels, device, input_dim, scaler
     )
     if best_model is not None:
-        print(f"  → best: {best_name}\n")
+        print(f"  -> best: {best_name}\n")
         res = eval_family("MLP", "mlp", best_model, wavs, labels,
                           device, scaler=scaler)
         all_results["MLP"] = (best_name, res)
     else:
-        print("  No MLP checkpoints found — skipping.\n")
+        print("  No MLP checkpoints found -- skipping.\n")
 
     # ------------------------------------------------------------------
     # CNN
     # ------------------------------------------------------------------
     print("=" * 55)
-    print("  CNN — finding best config …")
+    print("  CNN -- finding best config ...")
     best_name, best_cfg, best_model = _find_best_cnn(wavs, labels, device)
     if best_model is not None:
-        print(f"  → best: {best_name}\n")
+        print(f"  -> best: {best_name}\n")
         res = eval_family("CNN", "cnn", best_model, wavs, labels, device)
         all_results["CNN"] = (best_name, res)
     else:
-        print("  No CNN checkpoints found — skipping.\n")
+        print("  No CNN checkpoints found -- skipping.\n")
 
     # ------------------------------------------------------------------
     # CNN-LSTM
     # ------------------------------------------------------------------
     print("=" * 55)
-    print("  CNN-LSTM — finding best config …")
+    print("  CNN-LSTM -- finding best config ...")
     best_name, best_cfg, best_model = _find_best_cnn_lstm(wavs, labels, device)
     if best_model is not None:
-        print(f"  → best: {best_name}\n")
+        print(f"  -> best: {best_name}\n")
         res = eval_family("CNN-LSTM", "cnn_lstm", best_model, wavs, labels, device)
         all_results["CNN-LSTM"] = (best_name, res)
     else:
-        print("  No CNN-LSTM checkpoints found — skipping.\n")
+        print("  No CNN-LSTM checkpoints found -- skipping.\n")
 
     # ------------------------------------------------------------------
     # wav2vec2
     # ------------------------------------------------------------------
     if not args.skip_wav2vec2:
         print("=" * 55)
-        print("  wav2vec2 — loading model …")
+        print("  wav2vec2 -- loading model ...")
         best_name, best_model, extractor = _find_best_wav2vec2(wavs, labels, device)
         if best_model is not None:
-            print(f"  → best: {best_name}\n")
+            print(f"  -> best: {best_name}\n")
             res = eval_family("wav2vec2", "wav2vec2", best_model, wavs, labels,
                               device, extractor=extractor)
             all_results["wav2vec2"] = (best_name, res)
         else:
-            print("  No wav2vec2 checkpoints found — skipping.\n")
+            print("  No wav2vec2 checkpoints found -- skipping.\n")
 
     if not all_results:
         print("No results produced.  Exiting.")
@@ -1076,7 +1076,7 @@ def main() -> None:
     # Outputs
     # ------------------------------------------------------------------
     print("\n" + "=" * 55)
-    print("  Building outputs …")
+    print("  Building outputs ...")
 
     df_summary = build_summary_csv(all_results)
 

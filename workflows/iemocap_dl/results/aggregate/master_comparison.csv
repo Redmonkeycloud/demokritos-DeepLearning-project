@@ -1,0 +1,5 @@
+family,best_config,n_params_k,accuracy,weighted_f1,macro_f1,UAR_clean,rob_clean_UAR,rob_best_noised_UAR,rob_worst_noised_UAR,rob_best_denoised_UAR
+MLP,mlp_1,~100–500,0.5595,0.5602,0.5685,0.5742,0.5428,0.5372,0.4272,0.3016
+CNN,cnn_9,~200–800,0.5829,0.5805,0.5946,0.6033,0.6033,0.5895,0.4638,0.4099
+CNN-LSTM,cl_4,~500–2000,0.5662,0.5629,0.5755,0.5768,0.5768,0.4794,0.2816,0.2675
+wav2vec2,wav2vec2,~95000,0.6801,0.6811,0.6873,0.6703,0.6703,0.5911,0.2522,0.4674
